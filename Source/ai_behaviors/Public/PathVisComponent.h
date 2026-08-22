@@ -40,6 +40,21 @@ struct FPathVisPathPoint
 	bool operator==(const FPathVisPathPoint& Other) const = default;
 };
 
+UINTERFACE(BlueprintType)
+class AI_BEHAVIORS_API UUpdatablePathVisualization : public UInterface
+{
+	GENERATED_BODY()
+};
+
+class AI_BEHAVIORS_API IUpdatablePathVisualization
+{
+	GENERATED_BODY()
+
+public:
+	UFUNCTION(BlueprintImplementableEvent)
+	void Update(const TArray<FPathVisPathPoint>& PathPoints);
+};
+
 UCLASS(ClassGroup=(Custom), Blueprintable, meta=(BlueprintSpawnableComponent))
 class AI_BEHAVIORS_API UPathVisComponent : public UActorComponent
 {
@@ -47,21 +62,34 @@ class AI_BEHAVIORS_API UPathVisComponent : public UActorComponent
 
 	FNavPathSharedPtr Path;
 	TArray<FPathVisPathPoint> PathPoints; // at the moment, this is used only as cache for points built during the last update
-	UABPathFollowingComponent* PFComponent; // the owner's path following component
+	UPathFollowingComponent* PFComponent; // the owner's path following component
 	ACharacter* OwnerChar;
+
+	// the path visualization actor, managed by this component
+	TWeakObjectPtr<AActor> PathVisActor;
 	
 	void UpdatePathPoints(EPathPointsUpdateReason Reason);
 	void DebugDescribePathEvent(ENavPathEvent::Type PathEvent);
 	void DebugDescribePathFollowingResult(const FPathFollowingResult& Result);
+
+	void RegisterOwnerPathPtrUpdates();
+
+	void EnsurePathVisActor();
 	
 public:
 	// Sets default values for this component's properties
 	UPathVisComponent();
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (MustImplement = "/Script/ai_behaviors.UpdatablePathVisualization"))
+	TSubclassOf<AActor> PathVisActorClass;
+	
 	// blueprints implement this to draw the actual visualization
-	UFUNCTION(BlueprintImplementableEvent, meta=(ForceAsFunction))
+	UFUNCTION(BlueprintNativeEvent, meta=(ForceAsFunction))
 	void RedrawPathVisualization(const TArray<FPathVisPathPoint>& InPathPoints);
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+		FActorComponentTickFunction* ThisTickFunction) override;
+	
 protected:
 	virtual void HandlePathChanged(FNavPathSharedPtr NewPath);
 	virtual void HandlePathEvent(FNavigationPath* InPath, ENavPathEvent::Type PathEvent);

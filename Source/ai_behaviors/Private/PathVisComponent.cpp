@@ -183,9 +183,53 @@ void UPathVisComponent::DebugDescribePathFollowingResult(const FPathFollowingRes
 	}
 }
 
+void UPathVisComponent::RegisterOwnerPathPtrUpdates()
+{
+	// NOTE one could inherit from APathFollowingComponent and override the OnPathUpdated to notify about path changes
+	// but this would bind us to the particular class, so this solution is intended to work with any APathFollowingComponent subclass
+	
+	// holding invalid pointer to a path while pf component is gone (not likely but still)
+	if (!PFComponent && Path.IsValid())
+	{
+		Path.Reset();
+		UpdatePathPoints(PathChanged);
+		return;
+	}
+
+	// see if the path following component is pointing to a different path
+	if (PFComponent->GetPath() != Path)
+	{
+		HandlePathChanged(PFComponent->GetPath());
+	}
+}
+
+void UPathVisComponent::EnsurePathVisActor()
+{
+	if (!PathVisActor.IsValid())
+	{
+		PathVisActor = GetWorld()->SpawnActor(PathVisActorClass);
+	}
+}
+
 UPathVisComponent::UPathVisComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UPathVisComponent::RedrawPathVisualization_Implementation(const TArray<FPathVisPathPoint>& InPathPoints)
+{
+	EnsurePathVisActor();
+	if (PathVisActor.IsValid() && PathVisActor->Implements<UUpdatablePathVisualization>())
+	{
+		IUpdatablePathVisualization::Execute_Update(&*PathVisActor, InPathPoints);
+	}
+}
+
+void UPathVisComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+                                      FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	RegisterOwnerPathPtrUpdates();
 }
 
 void UPathVisComponent::HandlePathChanged(FNavPathSharedPtr NewPath)
@@ -233,6 +277,8 @@ void UPathVisComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *UUpdatablePathVisualization::StaticClass()->GetPathName());
+	
 	if (auto OwningController = Cast<AController>(GetOwner()))
 	{
 		OwnerChar = OwningController->GetCharacter();;
@@ -248,10 +294,9 @@ void UPathVisComponent::BeginPlay()
 			&UPathVisComponent::HandleCharacterMoved);
 
 		// bind to path following component's events
-		if (auto* PathFollowingComp = OwningController->FindComponentByClass<UABPathFollowingComponent>())
+		if (auto* PathFollowingComp = OwningController->FindComponentByClass<UPathFollowingComponent>())
 		{
 			this->PFComponent = PathFollowingComp;
-			PathFollowingComp->OnPathUpdatedEvent.AddUObject(this, &UPathVisComponent::HandlePathChanged);
 			PathFollowingComp->OnRequestFinished.AddUObject(this, &UPathVisComponent::HandleMoveReqFinished);
 		} else
 		{
