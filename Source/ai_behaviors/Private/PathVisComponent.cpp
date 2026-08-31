@@ -3,6 +3,8 @@
 
 #include "PathVisComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "NavMesh/NavMeshPath.h"
 
 
 struct FPolyLine
@@ -72,6 +74,66 @@ struct FPolyLine
 	}
 };
 
+void UPathVisComponent::CreatePathVisPointsFromNavPathPoints(const ACharacter* MovingChar,
+	FNavMeshPath* InPath, TArray<FPathVisPathPoint>& OutPoints)
+{
+	// create a spline from the nav path to distribute points on it
+	FPolyLine PathPolyLine;
+	
+	// create the polyline using path's points
+	for (int PointIdx = InPath->GetPathPoints().Num() - 1; PointIdx >= 0; PointIdx--)
+	{
+		FVector NavPathLocation = *Path->GetPathPointLocation(PointIdx);
+		PathPolyLine.Points.Add(NavPathLocation);
+	}
+
+	// calculate the distance remaining for the character to cover on this path
+	auto CurrentPathPointTargetId = PFComponent->GetCurrentPathElement();
+	auto CharacterLocation = OwnerChar->GetActorLocation();
+	float RemainingDistance = Path->GetLengthFromPosition(MovingChar->GetActorLocation(), CurrentPathPointTargetId);
+
+	// distribute points on the path, but not to cover more than the remaining distance
+	for (int i = 0; i < RemainingDistance / 100.f; i++)
+	{
+		// make everything a waypoint for the time being, can always adjust if there's a need
+		FPathVisPathPoint Pt {
+			PathPolyLine.GetLocationAtDistance(i * 100.f),
+			Waypoint
+		};
+		OutPoints.Add(Pt);
+	}
+}
+
+void UPathVisComponent::CreatePointsFromPathCorridor(const ACharacter* MovingChar,
+	FNavMeshPath* InPath,
+	TArray<FPathVisPathPoint>& OutPoints)
+{
+	FPolyLine PathPolyLine;
+
+	PathPolyLine.Points.Add(InPath->GetDestinationLocation());
+	
+	for (int i = InPath->GetPathCorridorEdges().Num() - 1; i >= 0; i--)
+	{
+		// TODO do not include edges already crossed
+		
+		auto Edge = InPath->GetPathCorridorEdges()[i];
+		PathPolyLine.Points.Add(Edge.Left + (Edge.Right - Edge.Left) / 2.);
+	}
+	
+	PathPolyLine.Points.Add(MovingChar->GetCharacterMovement()->GetFeetLocation());
+
+	TArray<FVector> Pts;
+	PathPolyLine.DistributePoints(100.f, Pts);
+
+	for (auto Pt : Pts)
+	{
+		FPathVisPathPoint PathVisPt {
+			Pt, Waypoint
+		};
+		OutPoints.Add(PathVisPt);
+	}
+}
+
 void UPathVisComponent::UpdatePathPoints(EPathPointsUpdateReason Reason)
 {
 	bool bUpdatedPathPoints = false;
@@ -82,36 +144,21 @@ void UPathVisComponent::UpdatePathPoints(EPathPointsUpdateReason Reason)
 		RedrawPathVisualization(PathPoints);
 		return;
 	}
-	
-	// create a spline from the nav path
-	FPolyLine PathPolyLine;
+
 	TArray<FPathVisPathPoint> NewPathPoints;
-
-	for (int PointIdx = Path->GetPathPoints().Num() - 1; PointIdx >= 0; PointIdx--)
+	
+	if (auto MeshNavPath = Path->CastPath<FNavMeshPath>()) // navigation on a recast navmesh
 	{
-		FVector NavPathLocation = *Path->GetPathPointLocation(PointIdx);
-		PathPolyLine.Points.Add(NavPathLocation);
-	}
-
-	// calculate the distance remaining for the character to cover on this path
-	auto CurrentPathPointTargetId = PFComponent->GetCurrentPathElement();
-	auto CharacterLocation = OwnerChar->GetActorLocation();
-	float RemainingDistance = Path->GetLengthFromPosition(CharacterLocation, CurrentPathPointTargetId);
-
-	/*UE_LOG(LogTemp, Display, TEXT("Current path point target id: %d"), CurrentPathPointTargetId);
-	UE_LOG(LogTemp, Display, TEXT("Current character location: %s"), *CharacterLocation.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Remaining distance on the path: %f"), RemainingDistance);*/
-
-	// distribute points on the path, but not to cover more than the remaining distance
-	for (int i = 0; i < RemainingDistance / 100.f; i++)
+		if (MeshNavPath->IsStringPulled())
+		{
+			CreatePathVisPointsFromNavPathPoints(OwnerChar, MeshNavPath, NewPathPoints);
+		} else
+		{
+			CreatePointsFromPathCorridor(OwnerChar, MeshNavPath, NewPathPoints);
+		}
+	} else // non-recast type of navigation data
 	{
-		// make everything a waypoint for the time being, can always adjust if there's a need
-		FPathVisPathPoint Pt {
-			PathPolyLine.GetLocationAtDistance(i * 100.f),
-			Waypoint
-		};
-		
-		NewPathPoints.Add(Pt);
+		UE_LOG(LogTemp, Error, TEXT("Path visualization for non-recast nav data is not implemented"));
 	}
 
 	// see if the actual point array has changed or not
@@ -238,6 +285,16 @@ void UPathVisComponent::HandlePathChanged(FNavPathSharedPtr NewPath)
 
 	UE_LOG(LogTemp, Display, TEXT("Received new path!"));
 	
+	FNavMeshPath* MeshNavPath = Path->CastPath<FNavMeshPath>();
+	if (MeshNavPath)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Path corridor length: %d"), MeshNavPath->PathCorridor.Num());
+		UE_LOG(LogTemp, Display, TEXT("Is string-pulled: %hs"), MeshNavPath->IsStringPulled() ? "Yes" : "No");
+		UE_LOG(LogTemp, Display, TEXT("Wants string pulling: %hs"), MeshNavPath->WantsStringPulling() ? "Yes" : "No");
+		UE_LOG(LogTemp, Display, TEXT("Wants path corridor: %hs"), MeshNavPath->WantsPathCorridor() ? "Yes" : "No");
+		UE_LOG(LogTemp, Display, TEXT("Number of path points: %d"), MeshNavPath->GetPathPoints().Num());
+	}
+	
 	// subscribe to the path events
 	NewPath->AddObserver(FNavigationPath::FPathObserverDelegate::FDelegate::CreateUObject(this, &UPathVisComponent::HandlePathEvent));
 	UpdatePathPoints(PathChanged);
@@ -258,6 +315,8 @@ void UPathVisComponent::HandleMoveReqFinished(FAIRequestID Request, const FPathF
 
 void UPathVisComponent::HandleCharacterMoved(float DeltaSeconds, FVector OldLocation, FVector OldVelocity)
 {
+	// UE_LOG(LogTemp, Display, TEXT("Handling character move event for path visualization @delta seconds=%f"), DeltaSeconds);
+	
 	if (!(OwnerChar && PFComponent))
 	{
 		return;

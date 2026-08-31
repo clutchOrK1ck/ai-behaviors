@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ABPathFollowingComponent.h"
 #include "Components/ActorComponent.h"
+#include "NavMesh/NavMeshPath.h"
 #include "PathVisComponent.generated.h"
 
 
@@ -74,7 +75,14 @@ class AI_BEHAVIORS_API UPathVisComponent : public UActorComponent
 
 	void RegisterOwnerPathPtrUpdates();
 
+	// ensure path vis actor exists and is valid
 	void EnsurePathVisActor();
+
+	// create path visualization points from a string-pulled path
+	void CreatePathVisPointsFromNavPathPoints(const ACharacter* MovingChar, FNavMeshPath* InPath, TArray<FPathVisPathPoint>& OutPoints);
+
+	// create path visualization points from the path corridor
+	void CreatePointsFromPathCorridor(const ACharacter* MovingChar, FNavMeshPath* InPath, TArray<FPathVisPathPoint>& OutPoints);
 	
 public:
 	// Sets default values for this component's properties
