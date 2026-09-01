@@ -2,6 +2,9 @@
 
 
 #include "PathVisComponent.h"
+
+#include "NavigationSystem.h"
+#include "NavLinkCustomInterface.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NavMesh/NavMeshPath.h"
@@ -14,18 +17,28 @@ struct FPolyLine
 	/**
 	 * distributes points on this poly line
 	 * @param Distance distance between points
+	 * @param OmitEnds do not generate points in the beginning and in the end
 	 * @param OutPoints 
 	 */
-	void DistributePoints(float Distance, TArray<FVector>& OutPoints)
+	void DistributePoints(float Distance, TArray<FVector>& OutPoints, bool OmitEnds = false) const
 	{
+		const int NumPoints = FMath::Floor(GetLength() / Distance);
+		const bool bNearlyPerfectFit = FMath::IsNearlyEqual(NumPoints * Distance, GetLength(), 100.f / 2.); // consider the spare distance of interval/2 to be a near perfect fit
+		
 		// TODO more efficient implementation?
-		for (int i = 0; i < GetLength() / Distance; i++)
+		for (int i = 0; i < NumPoints; i++)
 		{
+			if ((i == 0 && OmitEnds) ||
+				(i == (NumPoints - 1) && bNearlyPerfectFit && OmitEnds))
+			{
+				continue;
+			}
+			
 			OutPoints.Add(GetLocationAtDistance(i * Distance));
 		}
 	}
 	
-	FVector GetLocationAtDistance(float Distance)
+	FVector GetLocationAtDistance(float Distance) const
 	{
 		if (Points.IsEmpty())
 		{
@@ -57,7 +70,7 @@ struct FPolyLine
 		return Points.Last();
 	}
 	
-	float GetLength()
+	float GetLength() const
 	{
 		if (Points.Num() <= 1)
 		{
@@ -74,33 +87,86 @@ struct FPolyLine
 	}
 };
 
+void CreatePathVisPointsOnPolyline(const FPolyLine& InPolyLine,
+	TArray<FPathVisPathPoint>& OutPoints,
+	float Distance,
+	EPathVisualizationPointType Type,
+	bool OmitEnds = false)
+{
+	TArray<FVector> Locations;
+	InPolyLine.DistributePoints(Distance, Locations, OmitEnds);
+
+	for (const auto& Location: Locations)
+	{
+		OutPoints.Add(
+			FPathVisPathPoint(Location, Type));
+	}
+}
+
 void UPathVisComponent::CreatePathVisPointsFromNavPathPoints(const ACharacter* MovingChar,
 	FNavMeshPath* InPath, TArray<FPathVisPathPoint>& OutPoints)
 {
 	// create a spline from the nav path to distribute points on it
 	FPolyLine PathPolyLine;
+
+	// add the destination to the path points at once
+	if (!HasCharacterAlreadyPassedPathPoint(MovingChar, InPath, InPath->GetPathPoints().Num()))
+	{
+		OutPoints.Add(FPathVisPathPoint(
+			*InPath->GetPathPointLocation(InPath->GetPathPoints().Num() - 1), Destination));
+	} else
+	{
+		return;
+	}
 	
 	// create the polyline using path's points
 	for (int PointIdx = InPath->GetPathPoints().Num() - 1; PointIdx >= 0; PointIdx--)
 	{
 		FVector NavPathLocation = *Path->GetPathPointLocation(PointIdx);
+		FNavPathPoint NavPathPoint;
+		FNavigationPath::GetPathPoint(InPath, PointIdx, NavPathPoint);
+
+		// before anything, we must check if the moving character has already passed this point
+		if (HasCharacterAlreadyPassedPathPoint(MovingChar, InPath, PointIdx))
+		{
+			// add their current feet location to the path poly line, distribute points, and break!
+			PathPolyLine.Points.Add(MovingChar->GetMovementComponent()->GetFeetLocation());
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, Waypoint, true);
+			return;
+		}
+
 		PathPolyLine.Points.Add(NavPathLocation);
-	}
 
-	// calculate the distance remaining for the character to cover on this path
-	auto CurrentPathPointTargetId = PFComponent->GetCurrentPathElement();
-	auto CharacterLocation = OwnerChar->GetActorLocation();
-	float RemainingDistance = Path->GetLengthFromPosition(MovingChar->GetActorLocation(), CurrentPathPointTargetId);
+		// if the preceding path point is a nav link, this point must be the link destination
+		if (FNavPathPoint PrecedingPoint; FNavigationPath::GetPathPoint(InPath, PointIdx - 1, PrecedingPoint) &&
+			FNavMeshNodeFlags(PrecedingPoint.Flags).IsNavLink())
+		{
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, Waypoint, true);
 
-	// distribute points on the path, but not to cover more than the remaining distance
-	for (int i = 0; i < RemainingDistance / 100.f; i++)
-	{
-		// make everything a waypoint for the time being, can always adjust if there's a need
-		FPathVisPathPoint Pt {
-			PathPolyLine.GetLocationAtDistance(i * 100.f),
-			Waypoint
-		};
-		OutPoints.Add(Pt);
+			OutPoints.Add(
+				FPathVisPathPoint(NavPathLocation,
+				                  GetNavLinkTypeFromNavLinkPoint(PrecedingPoint) == ENavLinkDirection::Type::BothWays
+					                  ? NavlinkBi
+					                  : NavlinkEnd));
+
+			PathPolyLine.Points.Empty();
+			PathPolyLine.Points.Add(NavPathLocation);
+		}
+
+		// this point is a nav link - the following point (already in the path polyline) is then the navlink destination
+		if (FNavMeshNodeFlags(NavPathPoint.Flags).IsNavLink())
+		{
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, OffMeshWaypoint, true);
+			
+			// add the point itself to the waypoints
+			OutPoints.Add(FPathVisPathPoint(NavPathLocation,
+				GetNavLinkTypeFromNavLinkPoint(NavPathPoint) == ENavLinkDirection::Type::BothWays
+				? NavlinkBi
+				: NavlinkStart));
+			
+			PathPolyLine.Points.Empty();
+			PathPolyLine.Points.Add(NavPathLocation);
+		}
 	}
 }
 
@@ -132,6 +198,31 @@ void UPathVisComponent::CreatePointsFromPathCorridor(const ACharacter* MovingCha
 		};
 		OutPoints.Add(PathVisPt);
 	}
+}
+
+bool UPathVisComponent::HasCharacterAlreadyPassedPathPoint(const ACharacter* Character, FNavMeshPath* InPath,
+	uint32 PointIdx)
+{
+	const auto PathPointLocation = *InPath->GetPathPointLocation(PointIdx);
+	const auto CharacterFeetLocation = Character->GetCharacterMovement()->GetFeetLocation();
+	
+	return InPath->GetLengthFromPosition(CharacterFeetLocation, PFComponent->GetCurrentPathElement()) <
+		InPath->GetLengthFromPosition(PathPointLocation, PointIdx);
+}
+
+ENavLinkDirection::Type UPathVisComponent::GetNavLinkTypeFromNavLinkPoint(const FNavPathPoint& Pt) const
+{
+	ENavLinkDirection::Type NavLinkType;
+	if (const UNavigationSystemV1* NavSys = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem()))
+	{
+		if (const auto NavLink = NavSys->GetCustomLink(Pt.CustomNavLinkId))
+		{
+			FVector PlaceholderVec;
+			NavLink->GetLinkData(PlaceholderVec, PlaceholderVec, NavLinkType);
+		}
+	}
+
+	return NavLinkType;
 }
 
 void UPathVisComponent::UpdatePathPoints(EPathPointsUpdateReason Reason)
@@ -286,6 +377,16 @@ void UPathVisComponent::HandlePathChanged(FNavPathSharedPtr NewPath)
 	UE_LOG(LogTemp, Display, TEXT("Received new path!"));
 	
 	FNavMeshPath* MeshNavPath = Path->CastPath<FNavMeshPath>();
+
+	uint32 NumNavLinks = 0;
+	for (const auto& PathPoint : MeshNavPath->GetPathPoints())
+	{
+		if (FNavMeshNodeFlags(PathPoint.Flags).IsNavLink())
+		{
+			NumNavLinks++;
+		}
+	}
+	
 	if (MeshNavPath)
 	{
 		UE_LOG(LogTemp, Display, TEXT("Path corridor length: %d"), MeshNavPath->PathCorridor.Num());
@@ -293,6 +394,7 @@ void UPathVisComponent::HandlePathChanged(FNavPathSharedPtr NewPath)
 		UE_LOG(LogTemp, Display, TEXT("Wants string pulling: %hs"), MeshNavPath->WantsStringPulling() ? "Yes" : "No");
 		UE_LOG(LogTemp, Display, TEXT("Wants path corridor: %hs"), MeshNavPath->WantsPathCorridor() ? "Yes" : "No");
 		UE_LOG(LogTemp, Display, TEXT("Number of path points: %d"), MeshNavPath->GetPathPoints().Num());
+		UE_LOG(LogTemp, Display, TEXT("Number of nav links: %d"), NumNavLinks);
 	}
 	
 	// subscribe to the path events

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "ABPathFollowingComponent.h"
+#include "AI/Navigation/NavLinkDefinition.h"
 #include "Components/ActorComponent.h"
 #include "NavMesh/NavMeshPath.h"
 #include "PathVisComponent.generated.h"
@@ -19,9 +20,12 @@ enum EPathPointsUpdateReason
 UENUM(BlueprintType)
 enum EPathVisualizationPointType
 {
-	Waypoint,
-	Navlink,
-	Destination
+	Waypoint,			// a normal waypoint
+	NavlinkStart,		// the 'from' part of a one-directional navlink
+	NavlinkEnd,			// the 'to' part of a one-directional navlink
+	NavlinkBi,			// a bi-directional navlink
+	OffMeshWaypoint,	// usually a point on a path between two navlink sides
+	Destination			// nav path destination
 };
 
 /**
@@ -83,7 +87,11 @@ class AI_BEHAVIORS_API UPathVisComponent : public UActorComponent
 
 	// create path visualization points from the path corridor
 	void CreatePointsFromPathCorridor(const ACharacter* MovingChar, FNavMeshPath* InPath, TArray<FPathVisPathPoint>& OutPoints);
-	
+
+	bool HasCharacterAlreadyPassedPathPoint(const ACharacter* Character, FNavMeshPath* InPath, uint32 PointIdx);
+
+	ENavLinkDirection::Type GetNavLinkTypeFromNavLinkPoint(const FNavPathPoint& Pt) const;
+
 public:
 	// Sets default values for this component's properties
 	UPathVisComponent();
