@@ -37,6 +37,30 @@ struct FPolyLine
 			OutPoints.Add(GetLocationAtDistance(i * Distance));
 		}
 	}
+
+	/**
+	 * tries to fit points on this poly line, respecting radii of the poly line ends (no points will spawn there)
+	 * @param OutPoints 
+	 * @param Distance distance between the points
+	 * @param EndsRadius no points will spawn in this radius around the poly line ends
+	 */
+	void FitPoints(TArray<FVector>& OutPoints, float Distance, float EndsRadius) const
+	{
+		const float UsableLength = GetLength() - EndsRadius * 2.;
+		if (UsableLength <= 0.)
+		{
+			return;
+		}
+
+		const int NumSegments = FMath::RoundToInt(UsableLength / Distance);
+		const float SegmentLength = UsableLength / NumSegments;
+
+		for (int i = 0; i < NumSegments; i++)
+		{
+			// place in the center of the segment
+			OutPoints.Add(GetLocationAtDistance(EndsRadius + i * SegmentLength + SegmentLength / 2.));
+		}
+	}
 	
 	FVector GetLocationAtDistance(float Distance) const
 	{
@@ -90,11 +114,11 @@ struct FPolyLine
 void CreatePathVisPointsOnPolyline(const FPolyLine& InPolyLine,
 	TArray<FPathVisPathPoint>& OutPoints,
 	float Distance,
-	EPathVisualizationPointType Type,
-	bool OmitEnds = false)
+	float KeypointRadius,
+	EPathVisualizationPointType Type)
 {
 	TArray<FVector> Locations;
-	InPolyLine.DistributePoints(Distance, Locations, OmitEnds);
+	InPolyLine.FitPoints(Locations, Distance, KeypointRadius);
 
 	for (const auto& Location: Locations)
 	{
@@ -131,7 +155,7 @@ void UPathVisComponent::CreatePathVisPointsFromNavPathPoints(const ACharacter* M
 		{
 			// add their current feet location to the path poly line, distribute points, and break!
 			PathPolyLine.Points.Add(MovingChar->GetMovementComponent()->GetFeetLocation());
-			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, Waypoint, true);
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, WaypointDistance, KeypointRadius, Waypoint);
 			return;
 		}
 
@@ -141,7 +165,7 @@ void UPathVisComponent::CreatePathVisPointsFromNavPathPoints(const ACharacter* M
 		if (FNavPathPoint PrecedingPoint; FNavigationPath::GetPathPoint(InPath, PointIdx - 1, PrecedingPoint) &&
 			FNavMeshNodeFlags(PrecedingPoint.Flags).IsNavLink())
 		{
-			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, Waypoint, true);
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, WaypointDistance, KeypointRadius, Waypoint);
 
 			OutPoints.Add(
 				FPathVisPathPoint(NavPathLocation,
@@ -156,7 +180,7 @@ void UPathVisComponent::CreatePathVisPointsFromNavPathPoints(const ACharacter* M
 		// this point is a nav link - the following point (already in the path polyline) is then the navlink destination
 		if (FNavMeshNodeFlags(NavPathPoint.Flags).IsNavLink())
 		{
-			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, 100.f, OffMeshWaypoint, true);
+			CreatePathVisPointsOnPolyline(PathPolyLine, OutPoints, WaypointDistance, KeypointRadius, OffMeshWaypoint);
 			
 			// add the point itself to the waypoints
 			OutPoints.Add(FPathVisPathPoint(NavPathLocation,
@@ -352,6 +376,8 @@ void UPathVisComponent::EnsurePathVisActor()
 UPathVisComponent::UPathVisComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	WaypointDistance = 100.f;
+	KeypointRadius = 75.f;
 }
 
 void UPathVisComponent::RedrawPathVisualization_Implementation(const TArray<FPathVisPathPoint>& InPathPoints)

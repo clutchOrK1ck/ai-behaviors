@@ -98,6 +98,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (MustImplement = "/Script/ai_behaviors.UpdatablePathVisualization"))
 	TSubclassOf<AActor> PathVisActorClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float WaypointDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ToolTip = "Estimated radius of the keypoint visualization items for keypoints like destination, navlink transitions etc."))
+	float KeypointRadius;
 	
 	// blueprints implement this to draw the actual visualization
 	UFUNCTION(BlueprintNativeEvent, meta=(ForceAsFunction))
