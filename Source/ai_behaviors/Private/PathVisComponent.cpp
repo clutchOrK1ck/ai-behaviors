@@ -8,6 +8,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NavMesh/NavMeshPath.h"
+#include "NavMesh/RecastNavMesh.h"
 
 
 struct FPolyLine
@@ -198,22 +199,51 @@ void UPathVisComponent::CreatePointsFromPathCorridor(const ACharacter* MovingCha
 	FNavMeshPath* InPath,
 	TArray<FPathVisPathPoint>& OutPoints)
 {
-	FPolyLine PathPolyLine;
+	// get the recast nav mesh
+	const UNavigationSystemV1* NavSystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
+	ARecastNavMesh* NavMesh = Cast<ARecastNavMesh>(NavSystem->GetMainNavData());
 
-	PathPolyLine.Points.Add(InPath->GetDestinationLocation());
-	
-	for (int i = InPath->GetPathCorridorEdges().Num() - 1; i >= 0; i--)
+	if (!NavMesh)
 	{
-		// TODO do not include edges already crossed
-		
-		auto Edge = InPath->GetPathCorridorEdges()[i];
-		PathPolyLine.Points.Add(Edge.Left + (Edge.Right - Edge.Left) / 2.);
+		UE_LOG(LogTemp, Error, TEXT("Navigation system has returned an invalid pointer to the recast nav mesh"));
+		return;
 	}
 	
-	PathPolyLine.Points.Add(MovingChar->GetCharacterMovement()->GetFeetLocation());
+	FPolyLine PathPolyLine;
+	FVector DestinationLocation = InPath->GetDestinationLocation();
 
+	OutPoints.Add(FPathVisPathPoint(DestinationLocation, Destination));
+	PathPolyLine.Points.Add(DestinationLocation);
+
+	const FVector FeetLocation = MovingChar->GetMovementComponent()->GetFeetLocation();
+	
+	for (int i = InPath->PathCorridor.Num() - 1; i >= 0; i--)
+	{
+		const auto PolyId = InPath->PathCorridor[i];
+		FVector PolyCenter;
+		NavMesh->GetPolyCenter(PolyId, PolyCenter);
+
+		// this poly is the current path target? include it and break
+		if (auto CurrentPathElement = PFComponent->GetCurrentPathElement();
+			InPath->PathCorridor.IsValidIndex(CurrentPathElement) && InPath->PathCorridor[CurrentPathElement] == PolyId)
+		{
+			// PathPolyLine.Points.Add(PolyCenter);
+			break;
+		}
+		
+		// do not include the poly center for the poly that contains the destination location
+		if (NavMesh->DoesNodeContainLocation(PolyId, InPath->GetDestinationLocation()))
+		{
+			continue;
+		}
+		
+		PathPolyLine.Points.Add(PolyCenter);
+	}
+	
+	PathPolyLine.Points.Add(FeetLocation);
+	
 	TArray<FVector> Pts;
-	PathPolyLine.DistributePoints(100.f, Pts);
+	PathPolyLine.FitPoints(Pts, WaypointDistance, KeypointRadius);
 
 	for (auto Pt : Pts)
 	{
@@ -225,7 +255,7 @@ void UPathVisComponent::CreatePointsFromPathCorridor(const ACharacter* MovingCha
 }
 
 bool UPathVisComponent::HasCharacterAlreadyPassedPathPoint(const ACharacter* Character, FNavMeshPath* InPath,
-	uint32 PointIdx)
+                                                           uint32 PointIdx)
 {
 	const auto PathPointLocation = *InPath->GetPathPointLocation(PointIdx);
 	const auto CharacterFeetLocation = Character->GetCharacterMovement()->GetFeetLocation();
