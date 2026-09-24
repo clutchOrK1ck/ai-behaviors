@@ -159,10 +159,10 @@ public:
 	                          ECollisionChannel TraceChannel,
 	                          const FCollisionShape& CollisionShape,
 	                          const FQuat& Rot,
-	                          const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam,
-	                          const FCollisionResponseParams& ResponseParams = FCollisionResponseParams::DefaultResponseParam,
 	                          const int MaxIterations,
-	                          const float Tolerance) const
+							  const float Tolerance,
+	                          const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam,
+	                          const FCollisionResponseParams& ResponseParams = FCollisionResponseParams::DefaultResponseParam) const
 	{
 		return GeomSweepSingleIterative(Discretize(Start, End, MaxIterations, Tolerance), OutHit, Rot, CollisionShape, TraceChannel, Params, ResponseParams);
 	}
@@ -356,7 +356,7 @@ namespace TrajectoryDiscretization
 		virtual double GetIntervalStart() const = 0;
 		virtual double GetIntervalEnd() const = 0;
 
-		virtual ~IIntervalApproximation();
+		virtual ~IIntervalApproximation() = default;
 	};
 
 	// approximate the trajectory on a given interval with a line passing through two points on the trajectory
@@ -441,7 +441,10 @@ namespace TrajectoryDiscretization
 			return IntervalStart;
 		}
 
-		virtual ~FLinearIntervalApproximation() override;
+		bool operator==(const FLinearIntervalApproximation& Other) const
+		{
+			return this->A == Other.A && this->B == Other.B;
+		}
 	};
 
 	// approximate a 2d trajectory on a given interval with a polyline
@@ -485,6 +488,8 @@ namespace TrajectoryDiscretization
 					return Interval.GetValue(X);
 				}
 			}
+
+			return -1.;
 		}
 
 		virtual double GetXOfLargestApproximationError() const override
@@ -535,7 +540,7 @@ namespace TrajectoryDiscretization
 				return;
 			}
 
-			const int WorstIntervalIdx = Intervals.IndexOfByKey(*LargestErrorInterval);
+			const int WorstIntervalIdx = Intervals.Find(*LargestErrorInterval);
 
 			FLinearIntervalApproximation Left, Right;
 			LargestErrorInterval->Subdivide(
@@ -580,8 +585,6 @@ namespace TrajectoryDiscretization
 			}
 			return Approximation;
 		}
-
-		virtual ~FPolylineIntervalApproximation() override;
 	};
 }
 
@@ -807,9 +810,9 @@ class FPlanarBallisticTrajectory : public IBallisticTrajectory
 	TSharedPtr<FBallisticTrajectory2D> Helper2DImpl;
 	
 	FVector InitialVelocity;
-	const FVector Origin; // this trajectory in 3d space allows for arbitrary origin in the world
-	const float GravityZ;
-	UWorld* const World;
+	FVector Origin; // this trajectory in 3d space allows for arbitrary origin in the world
+	float GravityZ;
+	UWorld* World;
 
 	/**
 	 * @return normal of velocity's XY-projectiton
@@ -926,7 +929,7 @@ public:
 		{
 			return false;
 		}
-		return Helper2DImpl->DoesPassThrough(WorldPosToTrajectory2DLocalPos(Position));
+		return Helper2DImpl->DoesPassThrough(WorldPosToTrajectory2DLocalPos(Position), Tolerance);
 	}
 	
 	virtual float GetTimeRequiredToReach(const FVector& Position) const override
