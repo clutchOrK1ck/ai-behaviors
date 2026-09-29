@@ -22,4 +22,14 @@ protected:
 public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	/**
+	 * performs the beastly jump at the target
+	 *
+	 * under the hood, this will simply launch the character at the target
+	 * @param Target the target to jump at
+	 * @return whether the jump can reach the target
+	 */
+	UFUNCTION(BlueprintCallable)
+	bool BeastlyJump(const FVector& Target);
 };

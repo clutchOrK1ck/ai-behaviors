@@ -3,7 +3,10 @@
 
 #include "ABAIController.h"
 
+#include "ABEnemyCharacter.h"
 #include "ABPathFollowingComponent.h"
+#include "Ballistics.h"
+#include "GameFramework/Character.h"
 
 
 // Sets default values
@@ -27,5 +30,14 @@ void AABAIController::BeginPlay()
 void AABAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+bool AABAIController::BeastlyJump(const FVector& Target)
+{
+	if (const auto ABEnemyChar = Cast<AABEnemyCharacter>(this->GetCharacter()))
+	{
+		return ABEnemyChar->DoBeastlyJumpAt(Target);
+	}
+	return false;
 }
 
