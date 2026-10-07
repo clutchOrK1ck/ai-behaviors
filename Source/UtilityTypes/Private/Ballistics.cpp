@@ -1,13 +1,17 @@
 #include "Ballistics.h"
 
+#include "KismetTraceUtils.h"
+#include "PhysicsEngine/PhysicsSettings.h"
+
 bool IBallisticTrajectory::GeomSweepSingleIterative(const TArray<FVector>& Points,
-								  FHitResult& OutHit,
-								  const FQuat& Rot,
-								  const FCollisionShape& CollisionShape,
-								  ECollisionChannel TraceChannel,
-								  const FCollisionQueryParams& Params,
-								  const FCollisionResponseParams& ResponseParams,
-								  const FCollisionObjectQueryParams& ObjectParams) const
+                                                    FHitResult& OutHit,
+                                                    int& HitSegment,
+                                                    const FQuat& Rot,
+                                                    const FCollisionShape& CollisionShape,
+                                                    ECollisionChannel TraceChannel,
+                                                    const FCollisionQueryParams& Params,
+                                                    const FCollisionResponseParams& ResponseParams,
+                                                    const FCollisionObjectQueryParams& ObjectParams) const
 {
 	for (int i = 0; i < Points.Num() - 1; i++)
 	{
@@ -22,10 +26,12 @@ bool IBallisticTrajectory::GeomSweepSingleIterative(const TArray<FVector>& Point
 			ResponseParams,
 			ObjectParams))
 		{
+			HitSegment = i;
 			return true;
 		}
 	}
 
+	HitSegment = -1;
 	return false;
 }
 
@@ -419,3 +425,155 @@ TArray<FVector> FPlanarBallisticTrajectory::Discretize(const FVector& Start,
 
 	return Pts;
 }
+
+FBallisticTrajectory UBallisticTrajectoryLibrary::FindPassThroughTrajectory(bool& Success, const UObject* WorldContextObject,
+	const FVector& Origin,
+	const float Velocity, const FVector& PassThroughLocation, const bool PreferShortArc)
+{
+	// TODO different implementations? but for the moment just the planar trajectory
+	auto Trajectory = FPlanarBallisticTrajectory::CreateChecked(WorldContextObject, Origin, FVector{Velocity, 0., 0.});
+	if (!Trajectory || !Trajectory->Calibrate(PassThroughLocation, PreferShortArc))
+	{
+		Success = false;
+		return FBallisticTrajectory();
+	}
+
+	Success = true;
+	return FBallisticTrajectory{Trajectory->GetInitialVelocity(), Trajectory->GetOrigin(), Trajectory->GetGravityZ()};
+}
+
+void DrawDebugSphereTraceSingleOnTrajectory(UWorld* World,
+                                            const TArray<FVector>& Points,
+                                            float Radius,
+                                            EDrawDebugTrace::Type DrawDebugType,
+                                            bool bHit,
+                                            const FHitResult& OutHit,
+                                            int HitSegment,
+                                            FLinearColor TraceColor,
+                                            FLinearColor TraceHitColor,
+                                            float DrawTime)
+{
+	if (DrawDebugType != EDrawDebugTrace::None && Points.Num() >= 2)
+	{
+		bool bPersistent = DrawDebugType == EDrawDebugTrace::Persistent;
+		float LifeTime = DrawDebugType == EDrawDebugTrace::ForDuration ? DrawTime : 0.f;
+		
+		if (!bHit)
+		{
+			// green spheres along the trajectory
+			for (int i = 1; i < Points.Num(); i++)
+			{
+				DrawDebugSweptSphere(World, Points[i-1], Points[i], Radius, TraceColor.ToFColor(true), bPersistent, LifeTime);
+			}
+		} else
+		{
+			// green spheres up to hit, red afterwards + the point of the impact
+			for (int i = 0; i < Points.Num() - 1; i++)
+			{
+				if (i < HitSegment) // green
+				{
+					DrawDebugSweptSphere(World, Points[i], Points[i+1], Radius, TraceColor.ToFColor(true), bPersistent, LifeTime);
+				} else if (i == HitSegment)
+				{
+					// green up to hit point, red after
+					DrawDebugSweptSphere(World, Points[i], OutHit.Location, Radius, TraceColor.ToFColor(true), bPersistent, LifeTime);
+					DrawDebugSweptSphere(World, OutHit.Location, Points[i+1], Radius, TraceHitColor.ToFColor(true), bPersistent, LifeTime);
+					DrawDebugPoint(World, OutHit.ImpactPoint, 16.f, TraceColor.ToFColor(true), bPersistent, LifeTime);
+				} else
+				{
+					DrawDebugSweptSphere(World, Points[i], Points[i+1], Radius, TraceHitColor.ToFColor(true), bPersistent, LifeTime);
+				}
+			}
+		}
+	}
+}
+
+// there's a similar function in the Engine module but it is not exported by the module
+FCollisionQueryParams ConfigureCollisionParams(FName TraceTag, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, bool bIgnoreSelf, const UObject* WorldContextObject)
+{
+	// TODO what's the deal with the stat id here?
+	FCollisionQueryParams Params(TraceTag, SCENE_QUERY_STAT_ONLY(TrajectoryTraces), bTraceComplex);
+
+	Params.bReturnPhysicalMaterial = true;
+	Params.bReturnFaceIndex = !UPhysicsSettings::Get()->bSuppressFaceRemapTable; // Ask for face index, as long as we didn't disable globally
+	Params.AddIgnoredActors(ActorsToIgnore);
+	if (bIgnoreSelf)
+	{
+		const AActor* IgnoreActor = Cast<AActor>(WorldContextObject);
+		if (IgnoreActor)
+		{
+			Params.AddIgnoredActor(IgnoreActor);
+		}
+		else
+		{
+			// find owner
+			const UObject* CurrentObject = WorldContextObject;
+			while (CurrentObject)
+			{
+				CurrentObject = CurrentObject->GetOuter();
+				IgnoreActor = Cast<AActor>(CurrentObject);
+				if (IgnoreActor)
+				{
+					Params.AddIgnoredActor(IgnoreActor);
+					break;
+				}
+			}
+		}
+	}
+
+	return Params;
+}
+
+bool UBallisticTrajectoryLibrary::SphereTraceSingleOnTrajectory(const UObject* WorldContextObject,
+                                                                const FBallisticTrajectory& Trajectory,
+                                                                const float EndTime,
+                                                                const float Tolerance,
+                                                                const int MaxLinearizeIntervals,
+                                                                float Radius,
+                                                                ETraceTypeQuery TraceChannel,
+                                                                bool bTraceComplex,
+                                                                const TArray<AActor*>& ActorsToIgnore,
+                                                                EDrawDebugTrace::Type DrawDebugType,
+                                                                FHitResult& OutHit,
+                                                                bool bIgnoreSelf,
+                                                                FLinearColor TraceColor,
+                                                                FLinearColor TraceHitColor,
+                                                                float DrawTime)
+{
+	// TODO other trajectories but for the moment being we only have the planar ballistic
+	auto Traj = FPlanarBallisticTrajectory::CreateChecked(WorldContextObject, Trajectory.Origin,
+	                                                      Trajectory.InitialVelocity);
+	if (!Traj)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Invalid input trajectory for sphere trace on trajectory"));
+		return false;
+	}
+
+	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
+
+	static const FName SphereTraceOnTrajectorySingleName(TEXT("SphereTraceSingleOnTrajectory"));
+	FCollisionQueryParams Params = ConfigureCollisionParams(SphereTraceOnTrajectorySingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
+
+	TArray<FVector> DiscretizationPoints;
+	int HitSegment;
+	
+	const bool bHit = Traj->SweepSingleByChannel(OutHit,
+	                                             DiscretizationPoints,
+	                                             HitSegment,
+	                                             Traj->GetPositionAtTime(0.f),
+	                                             Traj->GetPositionAtTime(EndTime),
+	                                             CollisionChannel,
+	                                             FCollisionShape::MakeSphere(Radius),
+	                                             FQuat::Identity,
+	                                             MaxLinearizeIntervals,
+	                                             Tolerance,
+	                                             Params);
+
+#if ENABLE_DRAW_DEBUG
+	DrawDebugSphereTraceSingleOnTrajectory(Traj->GetWorld(), DiscretizationPoints, Radius, DrawDebugType, bHit, OutHit, HitSegment, TraceColor, TraceHitColor, DrawTime);
+#endif
+	
+	return bHit;
+}
+
+

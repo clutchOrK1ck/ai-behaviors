@@ -123,14 +123,19 @@ bool FTrajectoryTests::RunTest(const FString& Parameters)
 	this->TestTrue(TEXT("Time required to reach the test actor is computed"), TimeWhenShouldHitActor > 0.);
 
 	FHitResult HitResult;
+	TArray<FVector> OutPts;
+	int HitSegment;
+
 	auto HasHit = Trajectory.SweepSingleByChannel(HitResult,
+	                                              OutPts,
+	                                              HitSegment,
 	                                              FVector::ZeroVector,
 	                                              Trajectory.GetPositionAtTime(TimeWhenShouldHitActor * 1.5),
 	                                              ECollisionChannel::ECC_WorldStatic,
 	                                              FCollisionShape::MakeSphere(0.5),
 	                                              FQuat::Identity,
 	                                              2, 5.);
-	
+
 	this->TestTrue(TEXT("The shape trace along the trajectory hits the test actor"), HasHit);
 	
 	return true;

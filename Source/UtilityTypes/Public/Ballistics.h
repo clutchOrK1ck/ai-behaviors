@@ -2,6 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Algo/MaxElement.h"
+#include "Kismet/KismetSystemLibrary.h"
+
+#include "Ballistics.generated.h"
 
 template<typename T>
 class TBallisticTrajectory
@@ -106,15 +109,27 @@ class IBallisticTrajectory : public TBallisticTrajectory<FVector>
 {
 	/**
 	 * sweeps multiple line traces between successive points in an array
+	 * @param Points 
+	 * @param HitSegment		the index of the segment in trajectory's linearization where the hit occurred (-1 if no hit)
+	 * @param OutHit 
+	 * @param Rot 
+	 * @param CollisionShape 
+	 * @param TraceChannel 
+	 * @param Params 
+	 * @param ResponseParams 
+	 * @param ObjectParams 
+	 * @return 
 	 */
 	bool GeomSweepSingleIterative(const TArray<FVector>& Points,
 	                              FHitResult& OutHit,
+	                              int& HitSegment,
 	                              const FQuat& Rot,
 	                              const FCollisionShape& CollisionShape,
 	                              ECollisionChannel TraceChannel,
 	                              const FCollisionQueryParams& Params,
 	                              const FCollisionResponseParams& ResponseParams,
-	                              const FCollisionObjectQueryParams& ObjectParams = FCollisionObjectQueryParams::DefaultObjectQueryParam) const;
+	                              const FCollisionObjectQueryParams& ObjectParams =
+		                              FCollisionObjectQueryParams::DefaultObjectQueryParam) const;
 	
 public:
 	// get the world this trajectory exists in
@@ -125,6 +140,8 @@ public:
 	 *
 	 * this will actually perform multiple linear sweeps, constrained by MaxIterations
 	 * @param OutHit			the first blocking hit
+	 * @param Points			the array of points which resulted after trajectory's discretization and between which linear sweeps were performed
+	 * @param HitSegment		the index of the segment in trajectory's linearization where the hit occurred (-1 if no hit)
 	 * @param Start				point on the trajectory where the sweep starts
 	 * @param End				point on the trajectory where the sweep ends
 	 * @param TraceChannel
@@ -136,17 +153,22 @@ public:
 	 * @return 
 	 */
 	bool SweepSingleByChannel(FHitResult& OutHit,
+	                          TArray<FVector>& Points,
+	                          int& HitSegment,
 	                          const FVector& Start,
 	                          const FVector& End,
 	                          ECollisionChannel TraceChannel,
 	                          const FCollisionShape& CollisionShape,
 	                          const FQuat& Rot,
 	                          const int MaxIterations,
-							  const float Tolerance,
+	                          const float Tolerance,
 	                          const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam,
-	                          const FCollisionResponseParams& ResponseParams = FCollisionResponseParams::DefaultResponseParam) const
+	                          const FCollisionResponseParams& ResponseParams =
+		                          FCollisionResponseParams::DefaultResponseParam) const
 	{
-		return GeomSweepSingleIterative(Discretize(Start, End, MaxIterations, Tolerance), OutHit, Rot, CollisionShape, TraceChannel, Params, ResponseParams);
+		Points = Discretize(Start, End, MaxIterations, Tolerance);
+		return GeomSweepSingleIterative(Points, OutHit, HitSegment, Rot, CollisionShape,
+		                                TraceChannel, Params, ResponseParams);
 	}
 };
 
@@ -633,4 +655,71 @@ public:
 
 	virtual TArray<FVector> Discretize(const FVector& Start, const FVector& End, int MaxNumberOfIntervals,
 	                                   float Tolerance) const override;
+};
+
+// the blueprint-facing layer
+USTRUCT(BlueprintType)
+struct UTILITYTYPES_API FBallisticTrajectory
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly)
+	FVector InitialVelocity;
+
+	UPROPERTY(BlueprintReadOnly)
+	FVector Origin;
+
+	UPROPERTY(BlueprintReadOnly)
+	float GravityZ;
+};
+
+UCLASS()
+class UTILITYTYPES_API UBallisticTrajectoryLibrary : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+	UFUNCTION(BlueprintPure, meta=(WorldContext="WorldContextObject"))
+	static FBallisticTrajectory FindPassThroughTrajectory(
+		bool& Success,
+		const UObject* WorldContextObject,
+		const FVector& Origin,
+		const float Velocity,
+		const FVector& PassThroughLocation,
+		const bool PreferShortArc = true);
+
+	/**
+	 * 
+	 * @param WorldContextObject 
+	 * @param Trajectory				The trajectory along which to perform the sweep.
+	 * @param EndTime					Time along the trajectory when to end the trace. 
+	 * @param Tolerance					For linearization of the trajectory, the acceptable deviation of the approximation from the trajectory.
+	 * @param MaxLinearizeIntervals		For linearization of the trajectory, the maximum number of discrete intervals in which the trajectory will be divided.
+	 * @param Radius					Radius of the sphere to sweep.
+	 * @param TraceChannel 
+	 * @param bTraceComplex				True to test against complex collision, false to test against simplified collision.
+	 * @param ActorsToIgnore 
+	 * @param DrawDebugType 
+	 * @param OutHit					Properties of the trace hit.
+	 * @param bIgnoreSelf 
+	 * @param TraceColor 
+	 * @param TraceHitColor 
+	 * @param DrawTime 
+	 * @return							Tru eif there was a hit, false otherwise.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Collision", meta=(Tolerance="1.f", MaxLinearizeIntervals="10", bIgnoreSelf="true", WorldContext="WorldContextObject", AutoCreateRefTerm="ActorsToIgnore", DisplayName = "Sphere Trace On Trajectory", AdvancedDisplay="TraceColor,TraceHitColor,DrawTime", Keywords="sweep"))
+	static bool SphereTraceSingleOnTrajectory(const UObject* WorldContextObject,
+		const FBallisticTrajectory& Trajectory,
+		const float EndTime,
+		const float Tolerance,
+		const int MaxLinearizeIntervals,
+		float Radius,
+		ETraceTypeQuery TraceChannel,
+		bool bTraceComplex,
+		const TArray<AActor*>& ActorsToIgnore,
+		EDrawDebugTrace::Type DrawDebugType,
+		FHitResult& OutHit,
+		bool bIgnoreSelf,
+		FLinearColor TraceColor = FLinearColor::Red,
+		FLinearColor TraceHitColor = FLinearColor::Green,
+		float DrawTime = 5.0f);
 };
