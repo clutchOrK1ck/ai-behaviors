@@ -35,6 +35,56 @@ UConsoleCommand* UGameConsole::FindCommandTemplate(const FName& CommandName, boo
 	return nullptr;
 }
 
+void UGameConsole::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	InitializeInputComponent();
+	InitializeWidget();
+}
+
+
+void UGameConsole::InitializeInputComponent()
+{
+	if (InputComponent == nullptr)
+	{
+		InputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass());
+		
+		InputComponent->BindKey(
+			GetDefault<UGameConsoleSettings>()->ToggleKey,
+			IE_Pressed,
+			this,
+			&UGameConsole::ShowUI);
+	}
+}
+
+void UGameConsole::InitializeWidget()
+{
+	Widget = CreateWidget<UConsoleWidget>(this->GetGameInstance(), WidgetClass.Get());
+
+	// make the widget listen to stdout and stderr of the game console
+	this->StdOut->OnNewLine.AddLambda([this](const FString& Line)
+	{
+		Widget->OnNewLine(Line, EConsoleLineType::Display);
+	});
+
+	this->StdErr->OnNewLine.AddLambda([this](const FString& Line)
+	{
+		Widget->OnNewLine(Line, EConsoleLineType::Error);
+	});
+}
+
+void UGameConsole::ShowUI()
+{
+	if (Widget == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Console widget is null when 'ShowUI' is called"));
+		InitializeWidget();
+	}
+
+	Widget->AddToViewport();
+}
+
 void UGameConsole::ProcessConsoleInput(const FString& Input)
 {
 	// TODO double-check this logic

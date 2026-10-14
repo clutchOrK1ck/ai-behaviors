@@ -5,10 +5,22 @@
 #include "CoreMinimal.h"
 #include "AutoCompletionProvider.h"
 #include "ConsoleCommand.h"
+#include "ConsoleWidget.h"
 #include "Parser.h"
 #include "Execution.h"
+#include "InputCoreTypes.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameConsole.generated.h"
+
+UCLASS(BlueprintType, Config=Game, defaultconfig, meta=(DisplayName = "Game Console"))
+class UGameConsoleSettings : public UDeveloperSettings
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, Config)
+	FKey ToggleKey;
+};
 
 UCLASS(BlueprintType)
 class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAutoCompletionProvider
@@ -16,7 +28,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	GENERATED_BODY()
 
 	friend class UGameConsoleCommandExecutor;
-	
+
 	UPROPERTY()
 	TObjectPtr<UConsoleOutputStream> StdOut;
 
@@ -29,9 +41,26 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UPROPERTY()
 	UGameConsoleCommandExecutor* CommandExecutor;
 
+	/**
+	 * an input component that binds an input to opening the console during the game
+	 */
+	UPROPERTY()
+	UInputComponent* InputComponent = nullptr;
+
+	/**
+	 * the widget class for the console widget to create
+	 */
+	TSubclassOf<UConsoleWidget> WidgetClass;
+	
+	/**
+	 * the console widget, owned and managed by the console
+	 */
+	UPROPERTY()
+	UConsoleWidget* Widget = nullptr;
+
 	// a set of all commands known to this console
 	TSet<TSubclassOf<UConsoleCommand>> Commands;
-	
+
 	// history of executed commands
 	TArray<FString> ExecutionHistory;
 
@@ -43,6 +72,10 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	 */
 	UConsoleCommand* FindCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
 
+	void InitializeInputComponent();
+
+	void InitializeWidget();
+
 public:
 	
 	UGameConsole()
@@ -51,6 +84,25 @@ public:
 		StdErr = CreateDefaultSubobject<UConsoleOutputStream>(FName(TEXT("StandardErrorOutput")));
 	}
 
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
+	void ShowUI();
+
+	/**
+	 * returns an input component that can open this console 
+	 * @return 
+	 */
+	UInputComponent* GetInputComponent()
+	{
+		return InputComponent;
+	}
+
+	UFUNCTION(BlueprintCallable)
+	void SetWidgetClass(TSubclassOf<UConsoleWidget> InWidgetClass)
+	{
+		this->WidgetClass = InWidgetClass;
+	}
+	
 	/**
 	 * send a line of text to console and ask to process it
 	 *
@@ -89,7 +141,7 @@ public:
 	 * @param bContextRelevant whether to filter for commands relevant for current context
 	 */
 	void GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant = true) const;
-	
+
 	UFUNCTION(BlueprintPure)
 	const UConsoleOutputStream* GetStdOut()
 	{
@@ -115,7 +167,8 @@ public:
 	 * @param AutoCompletions 
 	 * @return 
 	 */
-	virtual bool RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const override;
+	virtual bool
+	RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const override;
 
 	/**
 	 * suggest auto-completions for a command and a caret position
@@ -125,28 +178,29 @@ public:
 	 * @return 
 	 */
 	UFUNCTION(BlueprintCallable)
-	bool SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition, TSet<FString>& AutoCompletions) const;
+	bool SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition,
+	                            TSet<FString>& AutoCompletions) const;
 };
 
 UCLASS()
 class UGameConsoleCommandExecutor : public UCommandExecutor
 {
 	GENERATED_BODY()
-	
-	const UGameConsole* Console = nullptr;
-	
-public:
 
+	const UGameConsole* Console = nullptr;
+
+public:
 	void Initialize(const UGameConsole* InConsole)
 	{
 		this->Console = InConsole;
 	}
-	
+
 	virtual bool AllowsMultipleProcesses() const override
 	{
 		return false;
 	}
-	
+
 	virtual bool FindOutputChannelsForBackgroundCommand(const UConsoleCommand* ConsoleCommand,
-		bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr) override;
+	                                                    bool bIsExecutingInForeground, ITextPipe*& OutStdOut,
+	                                                    ITextPipe*& OutStdErr) override;
 };

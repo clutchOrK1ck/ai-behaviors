@@ -39,20 +39,19 @@ class UConsoleOutputStream : public UObject, public ITextPipe
 {
 	GENERATED_BODY()
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMessageWritten, const FString&, Message);
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnMessageWritten, const FString&);
 
 	TArray<FString> Items;
 	
 public:
-
-	UPROPERTY(BlueprintAssignable)
-	FOnMessageWritten OnMessageWrittenDelegate;
+	
+	FOnMessageWritten OnNewLine;
 
 	UFUNCTION(BlueprintCallable)
 	virtual void Write(const FString& Message) override
 	{
 		Items.Add(Message);
-		OnMessageWrittenDelegate.Broadcast(Message);
+		OnNewLine.Broadcast(Message);
 	}
 
 	UFUNCTION(BlueprintCallable)

@@ -38,6 +38,9 @@ public class InGameConsole : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"InputCore",
+				"DeveloperSettings",
+				"UMG"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
