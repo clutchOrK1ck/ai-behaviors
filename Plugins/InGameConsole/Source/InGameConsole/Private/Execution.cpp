@@ -131,3 +131,24 @@ TArray<UConsoleCommand*> UCommandExecutor::GetRunningCommands() const
 
 	return Running;
 }
+
+void UCommandExecutor::Reset()
+{
+	for (UConsoleCommand* Persistent : PersistentCommands)
+	{
+		Persistent->MarkAsGarbage(); // TODO do we need special clean-ups or additional command-killing logic?
+	}
+	PersistentCommands.Empty();
+
+	for (UConsoleCommand* BackgroundCommand : RunningInBackground)
+	{
+		BackgroundCommand->MarkAsGarbage();
+	}
+	RunningInBackground.Empty();
+
+	if (RunningInForeground != nullptr)
+	{
+		RunningInForeground->MarkAsGarbage();
+		RunningInForeground = nullptr;
+	}
+}

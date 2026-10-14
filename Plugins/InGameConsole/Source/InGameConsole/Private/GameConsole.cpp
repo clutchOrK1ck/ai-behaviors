@@ -95,6 +95,14 @@ bool UGameConsole::LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& 
 	return true;
 }
 
+void UGameConsole::Reset()
+{
+	CommandExecutor->Reset();
+	ExecutionHistory.Empty();
+	StdOut->Clear();
+	StdErr->Clear();
+}
+
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames) const
 {
 	// TODO

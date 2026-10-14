@@ -76,6 +76,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	bool LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& HistoricalCommand) const;
+
+	/**
+	 * kills all executing commands and resets console state
+	 */
+	UFUNCTION(BlueprintCallable)
+	void Reset();
 	
 	void GetKnownCommandNames(TArray<FString>& OutCommandNames) const;
 	

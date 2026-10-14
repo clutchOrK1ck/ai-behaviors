@@ -63,4 +63,9 @@ public:
 	 * @return 
 	 */
 	virtual TArray<UConsoleCommand*> GetRunningCommands() const;
+
+	/**
+	 * kills all commands being executed and clears state
+	 */
+	void Reset();
 };
