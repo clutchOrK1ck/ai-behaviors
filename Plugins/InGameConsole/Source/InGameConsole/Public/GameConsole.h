@@ -35,15 +35,15 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	// history of executed commands
 	TArray<FString> ExecutionHistory;
 
-	UConsoleCommand* FindCommandTemplate(FName CommandName) const
-	{
-		return KnownCommands[0].GetDefaultObject(); // TODO
-	}
+	/**
+	 * 
+	 * @param CommandName name of the command
+	 * @param ContextRelevant return only if the command is relative in current context
+	 * @return 
+	 */
+	UConsoleCommand* FindCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
 
 public:
-
-	UPROPERTY() // TODO should we expose it somewhere on an engine level? but then it is a hassle if users have to manually specify the existing commands no?
-	TArray<TSubclassOf<UConsoleCommand>> KnownCommands;
 	
 	UGameConsole()
 	{
@@ -82,8 +82,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void Reset();
-	
-	void GetKnownCommandNames(TArray<FString>& OutCommandNames) const;
+
+	/**
+	 * returns a list o names of known commands, optionally respecting context relevancy
+	 * @param OutCommandNames 
+	 * @param bContextRelevant whether to filter for commands relevant for current context
+	 */
+	void GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant = true) const;
 	
 	UFUNCTION(BlueprintPure)
 	const UConsoleOutputStream* GetStdOut()

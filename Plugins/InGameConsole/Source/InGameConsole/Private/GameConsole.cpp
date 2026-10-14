@@ -18,6 +18,23 @@ bool UGameConsoleCommandExecutor::FindOutputChannelsForBackgroundCommand(const U
 	return true;
 }
 
+UConsoleCommand* UGameConsole::FindCommandTemplate(const FName& CommandName, bool ContextRelevant) const
+{
+	for (TSubclassOf<UConsoleCommand> CommandCls : Commands)
+	{
+		UConsoleCommand* CDO = CommandCls.GetDefaultObject();
+		if (CDO->CommandName.IsEqual(CommandName))
+		{
+			if (!ContextRelevant || CDO->IsRelevantInCurrentContext())
+			{
+				return CDO;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 void UGameConsole::ProcessConsoleInput(const FString& Input)
 {
 	// TODO double-check this logic
@@ -103,9 +120,15 @@ void UGameConsole::Reset()
 	StdErr->Clear();
 }
 
-void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames) const
+void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant) const
 {
-	// TODO
+	for (const TSubclassOf<UConsoleCommand>& CommandCls : Commands)
+	{
+		if (!bContextRelevant || CommandCls.GetDefaultObject()->IsRelevantInCurrentContext())
+		{
+			OutCommandNames.Add(CommandCls.GetDefaultObject()->CommandName.ToString());
+		}
+	}
 }
 
 bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const
