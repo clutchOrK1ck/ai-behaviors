@@ -3,6 +3,13 @@
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=571197ea_002D1187_002D4cff_002D8041_002D513a600c03ff/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="TrajectoryTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
   &lt;TestAncestor&gt;&#xD;
     &lt;TestId&gt;UnrealTest::5ED36D27-3A05-E521-B72B-2010C690D48E::::UtilityTypes.TrajectoryTests&lt;/TestId&gt;&#xD;
+    &lt;TestId&gt;UnrealTest::D0A8B7E2-C785-F735-ACC4-DF2F1A1C7F02::::UtilityTypes.ParserTests&lt;/TestId&gt;&#xD;
+    &lt;TestId&gt;UnrealTest::1A89FF3B-EBE7-C1A4-9F88-B5DE9CBE92CF::::InGameConsole.ParserTests&lt;/TestId&gt;&#xD;
+  &lt;/TestAncestor&gt;&#xD;
+&lt;/SessionState&gt;</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=ce71abde_002D40d1_002D4e11_002D9c3e_002Dc1929e87b84b/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" Name="ParserTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;TestAncestor&gt;&#xD;
+    &lt;TestId&gt;UnrealTest::D0A8B7E2-C785-F735-ACC4-DF2F1A1C7F02::::UtilityTypes.ParserTests&lt;/TestId&gt;&#xD;
   &lt;/TestAncestor&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
 	

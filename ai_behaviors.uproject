@@ -26,6 +26,14 @@
 		{
 			"Name": "PCG",
 			"Enabled": true
+		},
+		{
+			"Name": "Ledges",
+			"Enabled": true
+		},
+		{
+			"Name": "InGameConsole",
+			"Enabled": true
 		}
 	]
 }
