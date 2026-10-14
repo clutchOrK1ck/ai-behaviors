@@ -68,11 +68,31 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 	}
 
 	CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
+	ExecutionHistory.Add(Input);
 }
 
 void UGameConsole::AddCommandSet(const UConsoleCommandSet* CommandSet)
 {
 	Commands.Append(CommandSet->Commands);
+}
+
+bool UGameConsole::LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& HistoricalCommand) const
+{
+	if (Offset == 0)
+	{
+		return false;
+	}
+
+	const auto Offset_ = FMath::Abs(Offset);
+	const int Idx = ExecutionHistory.Num() - Offset_;
+
+	if (!ExecutionHistory.IsValidIndex(Idx))
+	{
+		return false;
+	}
+
+	HistoricalCommand = ExecutionHistory[Idx];
+	return true;
 }
 
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames) const

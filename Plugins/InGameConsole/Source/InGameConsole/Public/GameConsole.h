@@ -31,6 +31,9 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 
 	// a set of all commands known to this console
 	TSet<TSubclassOf<UConsoleCommand>> Commands;
+	
+	// history of executed commands
+	TArray<FString> ExecutionHistory;
 
 	UConsoleCommand* FindCommandTemplate(FName CommandName) const
 	{
@@ -63,6 +66,16 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void AddCommandSet(const UConsoleCommandSet* CommandSet);
+
+	/**
+	 * look up the executed command in the execution history
+	 *
+	 * @param Offset a positive integer for the offset (negative ints will be converted by positive). Offset = 1 means looking at the last executed command
+	 * @param HistoricalCommand 
+	 * @return true if the historical entry exists
+	 */
+	UFUNCTION(BlueprintCallable)
+	bool LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& HistoricalCommand) const;
 	
 	void GetKnownCommandNames(TArray<FString>& OutCommandNames) const;
 	
