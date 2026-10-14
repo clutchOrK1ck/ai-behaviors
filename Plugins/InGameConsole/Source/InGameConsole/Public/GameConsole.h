@@ -75,7 +75,7 @@ public:
 	 * @return true if the historical entry exists
 	 */
 	UFUNCTION(BlueprintCallable)
-	bool LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& HistoricalCommand) const;
+	bool LookUpExecutionHistoryAtOffset(const int32 Offset, FString& HistoricalCommand) const;
 
 	/**
 	 * kills all executing commands and resets console state
@@ -125,7 +125,7 @@ public:
 	 * @return 
 	 */
 	UFUNCTION(BlueprintCallable)
-	bool SuggestAutoCompletions(const FString& InCmdText, const uint32 CaretPosition, TSet<FString>& AutoCompletions) const;
+	bool SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition, TSet<FString>& AutoCompletions) const;
 };
 
 UCLASS()

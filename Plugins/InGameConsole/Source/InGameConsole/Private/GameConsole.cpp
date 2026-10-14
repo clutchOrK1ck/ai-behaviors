@@ -93,7 +93,7 @@ void UGameConsole::AddCommandSet(const UConsoleCommandSet* CommandSet)
 	Commands.Append(CommandSet->Commands);
 }
 
-bool UGameConsole::LookUpExecutionHistoryAtOffset(const uint32 Offset, FString& HistoricalCommand) const
+bool UGameConsole::LookUpExecutionHistoryAtOffset(const int32 Offset, FString& HistoricalCommand) const
 {
 	if (Offset == 0)
 	{
@@ -213,11 +213,17 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	return AutoCompletions.Num() > 0;
 }
 
-bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const uint32 CaretPosition,
+bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition,
 	TSet<FString>& AutoCompletions) const
 {
 	if (InCmdText.TrimStartAndEnd().IsEmpty())
 	{
+		return false;
+	}
+
+	if (CaretPosition < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Caret position cannot be negative"));
 		return false;
 	}
 
