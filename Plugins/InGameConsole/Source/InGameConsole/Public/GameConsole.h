@@ -102,7 +102,30 @@ public:
 		return StdErr;
 	}
 
+	/**
+	 * returns autocompletions for a piece of text.
+	 * 
+	 * this function assumes the caret is at the very end of the string. for caret-aware method, see SuggestAutocompletions
+	 *
+	 * it supports autocompletion of:
+	 * - command names
+	 * - parameter values (for string params whose values are restricted to a set)
+	 * - parameter names
+	 * @param InString 
+	 * @param AutoCompletions 
+	 * @return 
+	 */
 	virtual bool RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const override;
+
+	/**
+	 * suggest auto-completions for a command and a caret position
+	 * @param InCmdText 
+	 * @param CaretPosition caret position is conventionally defined as an index in text where next write will happen
+	 * @param AutoCompletions 
+	 * @return 
+	 */
+	UFUNCTION(BlueprintCallable)
+	bool SuggestAutoCompletions(const FString& InCmdText, const uint32 CaretPosition, TSet<FString>& AutoCompletions) const;
 };
 
 UCLASS()

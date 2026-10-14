@@ -212,3 +212,34 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 
 	return AutoCompletions.Num() > 0;
 }
+
+bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const uint32 CaretPosition,
+	TSet<FString>& AutoCompletions) const
+{
+	if (InCmdText.TrimStartAndEnd().IsEmpty())
+	{
+		return false;
+	}
+
+	// caret is at the start of the string - nothing to auto-complete
+	if (CaretPosition == 0)
+	{
+		return false;
+	}
+
+	// no auto-completions when caret is preceded by whitespace
+	if (FChar::IsWhitespace(InCmdText[CaretPosition - 1]))
+	{
+		return false;
+	}
+
+	// there must be whitespace immediately after the caret for auto-completion to work (no auto-completion in the middle of words)
+	if (CaretPosition < InCmdText.Len() && !FChar::IsWhitespace(InCmdText[CaretPosition]))
+	{
+		return false;
+	}
+
+	const auto SubstringForAutoCompletion = CaretPosition >= InCmdText.Len() ?
+		InCmdText : InCmdText.Mid(0, CaretPosition + 1);
+	return RequestAutocompletions_Implementation(SubstringForAutoCompletion, AutoCompletions);
+}
