@@ -1,0 +1,28 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Ledges",
+	"Description": "Climbable ledges",
+	"Category": "Other",
+	"CreatedBy": "clutchOrk1ck",
+	"CreatedByURL": "clutchorkick.dev",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Ledges",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "LedgesEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}
