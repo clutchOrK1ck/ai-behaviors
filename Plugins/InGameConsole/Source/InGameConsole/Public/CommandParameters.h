@@ -292,6 +292,45 @@ public:
 	}
 };
 
+UCLASS(BlueprintType, EditInlineNew)
+class URealParameter : public UParameter, public TConsoleParameter<double>
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	double DefaultValue;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter")
+	bool bRestrictRange;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
+	double MinValue = MIN_dbl;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
+	double MaxValue = MAX_dbl;
+
+	//~ Begin TConsoleParameter interface
+	virtual FName GetParamName() const override
+	{
+		return Name;
+	}
+	
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, double& OutValue,
+		FString& ErrorMessage) const override;
+	
+	virtual double GetDefaultValue() const override
+	{
+		return DefaultValue;
+	}
+	
+	virtual bool IsRequired() const override
+	{
+		return bRequired;
+	}
+	//~ End TConsoleParameter interface
+};
+
 USTRUCT(BlueprintType)
 struct FFlagDescription
 {
@@ -370,4 +409,10 @@ inline bool InitArgumentValue(const UParameter* ParamSpec, const FString* Value,
 	}
 
 	return false;
+}
+
+template<typename T>
+bool CheckInRange(const T& CheckValue, const T& ValueMin, const T& ValueMax)
+{
+	return CheckValue >= ValueMin && CheckValue <= ValueMax;
 }

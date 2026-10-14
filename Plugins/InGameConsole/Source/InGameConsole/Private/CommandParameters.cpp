@@ -13,6 +13,11 @@ bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCom
 		return false;
 	}
 
+	if (bRestrictRange && !CheckInRange(OutValue, MinValue, MaxValue))
+	{
+		return false;
+	}
+
 	return true;
 }
 
@@ -192,4 +197,20 @@ bool UBoolParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 	}
 
 	return false;
+}
+
+bool URealParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, double& OutValue,
+	FString& ErrorMessage) const
+{
+	if (!LexTryParseString(OutValue, *Value))
+	{
+		return false;
+	}
+
+	if (bRestrictRange && !CheckInRange(OutValue, MinValue, MaxValue))
+	{
+		return false;
+	}
+
+	return true;
 }
