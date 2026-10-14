@@ -1,0 +1,29 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "InGameConsole",
+	"Description": "Support for in-game console and console commands defined as UObjects",
+	"Category": "Other",
+	"CreatedBy": "clutchOrK1ck",
+	"CreatedByURL": "clutchorkick.dev",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "InGameConsole",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "SharedTypes",
+			"Enabled": true
+		}
+	]
+}
