@@ -1,0 +1,23 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "SharedTypes",
+	"Description": "A library containing utility types implementing math concepts, parsing, and others",
+	"Category": "Other",
+	"CreatedBy": "clutchOrK1ck",
+	"CreatedByURL": "clutchorkick.dev",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "SharedTypes",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
