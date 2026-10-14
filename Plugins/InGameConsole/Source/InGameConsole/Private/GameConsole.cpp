@@ -70,6 +70,11 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 	CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
 }
 
+void UGameConsole::AddCommandSet(const UConsoleCommandSet* CommandSet)
+{
+	Commands.Append(CommandSet->Commands);
+}
+
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames) const
 {
 	// TODO

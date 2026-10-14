@@ -29,6 +29,9 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UPROPERTY()
 	UGameConsoleCommandExecutor* CommandExecutor;
 
+	// a set of all commands known to this console
+	TSet<TSubclassOf<UConsoleCommand>> Commands;
+
 	UConsoleCommand* FindCommandTemplate(FName CommandName) const
 	{
 		return KnownCommands[0].GetDefaultObject(); // TODO
@@ -44,10 +47,23 @@ public:
 		StdOut = CreateDefaultSubobject<UConsoleOutputStream>(FName(TEXT("StandardOutput")));
 		StdErr = CreateDefaultSubobject<UConsoleOutputStream>(FName(TEXT("StandardErrorOutput")));
 	}
-	
+
+	/**
+	 * send a line of text to console and ask to process it
+	 *
+	 * this can result in command execution, communication with the currently running foreground command, or an error
+	 * @param Input 
+	 */
 	UFUNCTION(BlueprintCallable)
 	void ProcessConsoleInput(const FString& Input);
 
+	/**
+	 * registers commands from the supplied command set
+	 * @param CommandSet 
+	 */
+	UFUNCTION(BlueprintCallable)
+	void AddCommandSet(const UConsoleCommandSet* CommandSet);
+	
 	void GetKnownCommandNames(TArray<FString>& OutCommandNames) const;
 	
 	UFUNCTION(BlueprintPure)

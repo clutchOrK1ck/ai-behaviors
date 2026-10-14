@@ -287,3 +287,17 @@ public:
 	 */
 	bool CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const;
 };
+
+/**
+ * a set of commands.
+ * The console then registers one or more command sets on game start, level loads etc.
+ */
+UCLASS(Blueprintable, BlueprintType)
+class UConsoleCommandSet : public UDataAsset
+{
+	GENERATED_BODY()
+	
+public:
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
+	TSet<TSubclassOf<UConsoleCommand>> Commands;
+};
