@@ -20,10 +20,13 @@ class UConsoleCommand;
 using FArgumentValue = TVariant<int32, double, bool, FString, FVector, TArray<FString>>;
 
 /**
- * a container for the arguments supplied to the command
+ * a container for the arguments supplied to the command, sendable over the network
  */
+USTRUCT()
 struct FCommandArguments
 {
+	GENERATED_BODY()
+	
 	template<typename T>
 	bool Get(const FName& Name, T& OutValue) const;
 	
@@ -40,10 +43,20 @@ struct FCommandArguments
 		return Flags.Contains(Flag);
 	}
 
+	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
+
 private:
-	
 	TMap<FName, FArgumentValue> Args;
 	TSet<FString> Flags;
+};
+
+template<>
+struct TStructOpsTypeTraits<FCommandArguments> : public TStructOpsTypeTraitsBase2<FCommandArguments>
+{
+	enum
+	{
+		WithNetSerializer = true
+	};
 };
 
 template <typename T>

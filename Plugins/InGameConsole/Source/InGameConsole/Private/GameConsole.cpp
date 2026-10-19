@@ -5,7 +5,7 @@
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
-bool UGameConsoleCommandExecutor::FindOutputChannelsForBackgroundCommand(const UConsoleCommand* ConsoleCommand,
+bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
                                                                          bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
 {
 	if (!bIsExecutingInForeground)
@@ -92,8 +92,18 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 		return;
 	}
 
-	// if we are trying to execute server-only command as a client, we should send a remote execution request to the server
-	if (CommandTemplate->bIsServerCommand && (GetWorld()->GetNetMode() != NM_DedicatedServer && GetWorld()->GetNetMode() != NM_ListenServer && GetWorld()->GetNetMode() != NM_Standalone))
+	FCommandArguments Args;
+
+	if (!Parser.ParseArguments(Tokenizer.GetTokens(), CommandTemplate, Args, ErrorMsg))
+	{
+		StdErr->Write("Bla bla syntax error"); // TODO
+		return;
+	}
+
+	const bool bRemoteExecution = CommandTemplate->bIsServerCommand && GetWorld()->GetNetMode() == NM_Client;
+	
+	// check that remote execution component exists on the player controller
+	if (bRemoteExecution)
 	{
 		URemoteExecutionComponent* RemoteExecutionComponent = Requester->FindComponentByClass<URemoteExecutionComponent>();
 		if (!RemoteExecutionComponent)
@@ -102,18 +112,18 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			return;
 		}
 
-		// RemoteExecutionComponent->SendServerExecutionRequest(Command);
-		return;
-	}
-
-	FCommandArguments Args;
-
-	if (!Parser.ParseArguments(Tokenizer.GetTokens(), CommandTemplate, Args, ErrorMsg))
+		if (!RemoteExecutionComponent->IsPlayerAllowedToExecute(CommandTemplate))
+		{
+			StdErr->Write("You are not allowed to execute bla bla, this is server-only command, please request authority");
+			return;
+		}
+		
+		RemoteExecutionComponent->ExecuteCommandOnServer(CommandTemplate->StaticClass(), Args);
+	} else
 	{
-		StdErr->Write("Bla bla syntax error"); // TODO
+		CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
 	}
 
-	CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
 	ExecutionHistory.Add(Command);
 }
 

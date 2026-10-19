@@ -6,13 +6,33 @@
 #include "UObject/Object.h"
 #include "Commons.generated.h"
 
-DECLARE_DELEGATE_OneParam(FOnNewInput, const FString&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnNewInput, const FString&);
 
 class ITextPipe
 {
 public:
 	virtual void Write(const FString& Message) = 0;
 	virtual ~ITextPipe() = default;
+};
+
+/**
+ * a simple text pipe accepting text messages. Emits an event on an incoming text message
+ */
+UCLASS()
+class USimpleTextPipe : public UObject, public ITextPipe
+{
+	GENERATED_BODY()
+
+	TArray<FString> Items;
+	
+public:
+	FOnNewInput OnNewItem;
+	
+	virtual void Write(const FString& Message) override
+	{
+		Items.Add(Message);
+		OnNewItem.Broadcast(Message);
+	}
 };
 
 /**
@@ -30,7 +50,7 @@ public:
 	virtual void Write(const FString& Item) override
 	{
 		History.Add(Item);
-		OnNewInput.ExecuteIfBound(Item);
+		OnNewInput.Broadcast(Item);
 	}
 };
 

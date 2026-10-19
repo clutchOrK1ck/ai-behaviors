@@ -223,7 +223,7 @@ public:
 	{
 		bIsWaitingForUserInput = false;
 		OnCommandAborted.ExecuteIfBound();
-		UserInput->OnNewInput.Unbind();
+		UserInput->OnNewInput.Clear();
 		// TODO other. do we need to clear state or even destroy? it largely depends on whether commands should be instantiated or kept alive indefinitely and periodically clean their state
 	}
 

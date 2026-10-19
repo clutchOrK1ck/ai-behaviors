@@ -22,8 +22,8 @@ void UConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
 			// make the action listen to the input events of this command
 			if (this->UserInput->OnNewInput.IsBound())
 			{
-				this->UserInput->OnNewInput.Unbind();
-				this->UserInput->OnNewInput.BindRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
+				this->UserInput->OnNewInput.Clear();
+				this->UserInput->OnNewInput.AddRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
 			}
 
 			// make the action listen to the abort events of this command

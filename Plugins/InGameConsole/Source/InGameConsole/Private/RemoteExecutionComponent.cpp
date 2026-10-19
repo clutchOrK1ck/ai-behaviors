@@ -3,10 +3,63 @@
 
 #include "RemoteExecutionComponent.h"
 
+#include "GameConsole.h"
+
+bool URemoteCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
+                                                          bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
+{
+	OutStdOut = RemoteExecutionComponent->StdOut;
+	OutStdErr = RemoteExecutionComponent->StdErr;
+
+	return true;
+}
+
+void URemoteExecutionComponent::ReceiveCommandFeedbackOnClient_Implementation(const FString& Message,
+	bool bIsStdErr)
+{
+	// push the feedback sent by the command from the server to the local game console stdout/stderr
+	if (const UGameConsole* Console = GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>())
+	{
+		if (bIsStdErr)
+		{
+			Console->GetMutableStdErr()->Write(Message);
+		} else
+		{
+			Console->GetMutableStdOut()->Write(Message);
+		}
+	}
+}
+
+bool URemoteCommandExecutor::AllowsMultipleProcesses() const
+{
+	return true; // TODO yes?
+}
+
+void URemoteCommandExecutor::Initialize(URemoteExecutionComponent* InRemoteExecutionComponent)
+{
+	this->RemoteExecutionComponent = InRemoteExecutionComponent;
+}
+
 URemoteExecutionComponent::URemoteExecutionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	// TODO replication
+
+	StdOut = CreateDefaultSubobject<USimpleTextPipe>("StdOut");
+	StdErr = CreateDefaultSubobject<USimpleTextPipe>("StdErr");
+
+	RemoteCommandExecutor = CreateDefaultSubobject<URemoteCommandExecutor>("RemoteCommandExecutor");
+	RemoteCommandExecutor->Initialize(this);
+
+	// push command feedback back to the client
+	StdOut->OnNewItem.AddLambda([this](const FString& Message)
+	{
+		this->ReceiveCommandFeedbackOnClient(Message, false);
+	});
+
+	StdErr->OnNewItem.AddLambda([this](const FString& Message)
+	{
+		this->ReceiveCommandFeedbackOnClient(Message, true);
+	});
 }
 
 bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommand* Command) const
@@ -29,15 +82,22 @@ bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommand* 
 	return false;
 }
 
-void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(EExecutionAuthorityType Type,
-	const FString& Key)
+void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassOf<UConsoleCommand> CommandClass,
+	const FCommandArguments& Args)
 {
+	// server-side control for malicious execution attempts
+	if (!IsPlayerAllowedToExecute(CommandClass.GetDefaultObject()))
+	{
+		return;
+	}
+
 	
 }
 
-void URemoteExecutionComponent::ExecuteServerCommand_Implementation(const FString& Command)
+void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(EExecutionAuthorityType Type,
+                                                                               const FString& Key)
 {
-	// TODO send the command to the game console + this happens on the server...
+	
 }
 
 
@@ -51,6 +111,38 @@ bool URemoteExecutionSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 	return Cast<UWorld>(Outer)->GetNetMode() == NM_DedicatedServer || Cast<UWorld>(Outer)->GetNetMode() == NM_ListenServer;
 }
 
+void URemoteExecutionSubsystem::AddRemoteExecutionAuthorityRequest(const FExecutionAuthorityRequest& Request)
+{
+	PendingRequests.Enqueue(Request);
+}
+
+void URemoteExecutionSubsystem::GrantAuthority(const APlayerController* Player, EExecutionAuthorityType Type, FString Key)
+{
+	if (Player == nullptr || Player->FindComponentByClass<URemoteExecutionComponent>() == nullptr)
+	{
+		return;
+	}
+
+	FExecutionAuthority NewAuthority;
+
+	NewAuthority.Type = Type;
+	NewAuthority.Key = Key;
+
+	// TODO double check that key is present if a particular type is supplied
+	Player->FindComponentByClass<URemoteExecutionComponent>()->ExecutionAuthorityList.Add(NewAuthority);
+}
+
+bool URemoteExecutionSubsystem::GetOldestRequest(FExecutionAuthorityRequest& Request)
+{
+	if (FExecutionAuthorityRequest* RequestPtr = PendingRequests.Peek())
+	{
+		Request = *RequestPtr;
+		return true;
+	}
+
+	return false;
+}
+
 void URemoteExecutionSubsystem::ProcessOldestRequest(EProcessRequestAction Action)
 {
 	if (PendingRequests.IsEmpty())
@@ -60,24 +152,13 @@ void URemoteExecutionSubsystem::ProcessOldestRequest(EProcessRequestAction Actio
 
 	FExecutionAuthorityRequest Request;
 	PendingRequests.Dequeue(Request);
-
-	if (Request.Requester == nullptr || Request.Requester->FindComponentByClass<URemoteExecutionComponent>() == nullptr)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Requesting player controller is nullptr or has no valid remote execution component"));
-		return;
-	}
 	
 	if (Action == EProcessRequestAction::Deny)
 	{
 		return;
 	}
 
-	FExecutionAuthority NewAuthority;
-
-	NewAuthority.Type = Request.Type;
-	NewAuthority.Key = Request.Key;
-
-	Request.Requester->FindComponentByClass<URemoteExecutionComponent>()->ExecutionAuthorityList.Add(NewAuthority);
+	GrantAuthority(Request.Requester, Request.Type, Request.Key);
 }
 
 void URemoteExecutionSubsystem::PurgeAllRequests()

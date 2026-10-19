@@ -156,6 +156,16 @@ public:
 		return StdErr;
 	}
 
+	UConsoleOutputStream* GetMutableStdOut() const
+	{
+		return StdOut;
+	}
+
+	UConsoleOutputStream* GetMutableStdErr() const
+	{
+		return StdErr;
+	}
+
 	/**
 	 * returns autocompletions for a piece of text.
 	 * 
@@ -202,7 +212,7 @@ public:
 		return false;
 	}
 
-	virtual bool FindOutputChannelsForBackgroundCommand(const UConsoleCommand* ConsoleCommand,
+	virtual bool FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
 	                                                    bool bIsExecutingInForeground, ITextPipe*& OutStdOut,
 	                                                    ITextPipe*& OutStdErr) override;
 };

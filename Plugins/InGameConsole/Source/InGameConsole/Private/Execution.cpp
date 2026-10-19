@@ -53,7 +53,7 @@ bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommand>& Comma
 		CommandInstance = NewObject<UConsoleCommand>(this, CommandClass.Get());
 	}
 
-	if (!FindOutputChannelsForBackgroundCommand(CommandInstance, bForeground, ExecutionContext.StdOut, ExecutionContext.StdErr))
+	if (!FindOutputChannelsForCommand(CommandInstance, bForeground, ExecutionContext.StdOut, ExecutionContext.StdErr))
 	{
 		CommandInstance->MarkAsGarbage();
 		return false;

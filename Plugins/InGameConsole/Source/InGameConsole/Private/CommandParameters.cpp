@@ -4,8 +4,17 @@
 #include "CommandParameters.h"
 #include "ConsoleCommand.h"
 
+bool FCommandArguments::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
+{
+	Ar << Args;
+	Ar << Flags;
+
+	bOutSuccess = !Ar.IsError();
+	return true;
+}
+
 bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, int32& OutValue,
-	FString& ErrorMessage) const
+                                         FString& ErrorMessage) const
 {
 	if (!LexTryParseString(OutValue, *Value))
 	{

@@ -26,7 +26,7 @@ class UCommandExecutor : public UObject
 	
 protected:
 	
-	virtual bool FindOutputChannelsForBackgroundCommand(const UConsoleCommand* ConsoleCommand,
+	virtual bool FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
 		bool bIsExecutingInForeground,
 		ITextPipe*& OutStdOut,
 		ITextPipe*& OutStdErr)
