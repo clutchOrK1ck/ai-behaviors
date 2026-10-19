@@ -76,6 +76,8 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 
 	void InitializeWidget();
 
+	void ProcessConsoleCommand(const APlayerController* Requester, const FString& Command);
+
 public:
 	
 	UGameConsole()

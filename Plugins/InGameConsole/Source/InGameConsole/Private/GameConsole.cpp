@@ -2,6 +2,7 @@
 
 #include "GameConsole.h"
 #include "ConsoleCommand.h"
+#include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 bool UGameConsoleCommandExecutor::FindOutputChannelsForBackgroundCommand(const UConsoleCommand* ConsoleCommand,
@@ -74,6 +75,48 @@ void UGameConsole::InitializeWidget()
 	});
 }
 
+void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, const FString& Command)
+{
+	FString ErrorMsg;
+		
+	if (!Tokenizer.Parse(Command))
+	{
+		StdErr->Write(FString::Format(TEXT("Failed to tokenize the command with error: {0}"), {Tokenizer.GetError()->GetErrorMessage()}));
+		return;
+	}
+
+	const auto CommandTemplate = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
+	if (!CommandTemplate)
+	{
+		StdErr->Write("Command bla bla does not exist"); // TODO
+		return;
+	}
+
+	// if we are trying to execute server-only command as a client, we should send a remote execution request to the server
+	if (CommandTemplate->bIsServerCommand && (GetWorld()->GetNetMode() != NM_DedicatedServer && GetWorld()->GetNetMode() != NM_ListenServer && GetWorld()->GetNetMode() != NM_Standalone))
+	{
+		URemoteExecutionComponent* RemoteExecutionComponent = Requester->FindComponentByClass<URemoteExecutionComponent>();
+		if (!RemoteExecutionComponent)
+		{
+			StdErr->Write("Your game configuration does not allow remote execution of server-only commands, remote execution component is missing");
+			return;
+		}
+
+		// RemoteExecutionComponent->SendServerExecutionRequest(Command);
+		return;
+	}
+
+	FCommandArguments Args;
+
+	if (!Parser.ParseArguments(Tokenizer.GetTokens(), CommandTemplate, Args, ErrorMsg))
+	{
+		StdErr->Write("Bla bla syntax error"); // TODO
+	}
+
+	CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
+	ExecutionHistory.Add(Command);
+}
+
 void UGameConsole::ShowUI()
 {
 	if (Widget == nullptr)
@@ -111,31 +154,7 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 	}
 
 	// else - this must be a new command request
-		
-	FString ErrorMsg;
-		
-	if (!Tokenizer.Parse(Input))
-	{
-		StdErr->Write(FString::Format(TEXT("Failed to tokenize the command with error: {0}"), {Tokenizer.GetError()->GetErrorMessage()}));
-		return;
-	}
-
-	const auto CommandTemplate = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
-	if (!CommandTemplate)
-	{
-		StdErr->Write("Command bla bla does not exist"); // TODO
-		return;
-	}
-
-	FCommandArguments Args;
-
-	if (!Parser.ParseArguments(Tokenizer.GetTokens(), CommandTemplate, Args, ErrorMsg))
-	{
-		StdErr->Write("Bla bla syntax error"); // TODO
-	}
-
-	CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
-	ExecutionHistory.Add(Input);
+	ProcessConsoleCommand(Requester, Input);
 }
 
 void UGameConsole::AddCommandSet(const UConsoleCommandSet* CommandSet)
