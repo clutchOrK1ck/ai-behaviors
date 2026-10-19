@@ -1,5 +1,5 @@
 #pragma once
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 #include "Parser.h"
 #include "SharedTypes/Public/Parser.h"
 
@@ -29,7 +29,7 @@ public:
 	 * @return 
 	 */
 	bool ParseArguments(const TArray<FString>& Tokens,
-		const UConsoleCommand* Command,
+		const UConsoleCommandBase* Command,
 		FCommandArguments& OutArgs,
 		FString& OutError);
 };

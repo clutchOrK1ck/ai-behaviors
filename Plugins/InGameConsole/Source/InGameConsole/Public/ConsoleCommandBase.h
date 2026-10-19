@@ -6,7 +6,7 @@
 #include "UObject/Object.h"
 #include "CommandParameters.h"
 #include "Commons.h"
-#include "ConsoleCommand.generated.h"
+#include "ConsoleCommandBase.generated.h"
 
 struct FCommandExecutionContext
 {
@@ -68,6 +68,7 @@ enum class ECommandLifecycleType : uint8
 	Persistent UMETA(ToolTip = "The command object will be created once on first invocation and persist through the game instance lifetim. Use this for commands that have their own persistent state")
 };
 
+
 /**
  * a command executable from the game console. Console commands are async by default. They cannot tick but they can
  * execute latent procedures, wait for other objects to finish execution etc. To finish execution, its 'Finish' method
@@ -75,30 +76,15 @@ enum class ECommandLifecycleType : uint8
  *
  * Console command instances should be created per invocation
  */
-UCLASS(Blueprintable, meta=(ShowWorldContextPin))
-class INGAMECONSOLE_API UConsoleCommand : public UObject
+UCLASS(NotBlueprintable)
+class INGAMECONSOLE_API UConsoleCommandBase : public UObject
 {
 	GENERATED_BODY()
 
-	DECLARE_DELEGATE(FOnAbortCommand);
-	FOnAbortCommand OnCommandAborted;
-
-	DECLARE_DELEGATE(FOnExecutionFinished);
-	
-	FCommandExecutionContext CurrentExecutionContext;
-
-	/**
-	 * this command's input channel
-	 */
-	UPROPERTY()
-	TObjectPtr<UCommandUserInput> UserInput;
-	
-	// if user needs to supply input for this command to resume
-	bool bIsWaitingForUserInput;
-
-	bool bHasFinished; // whether this command has finished execution
+protected:
 	int32 ExitCode; // command exit code, if it finished
-
+	FCommandExecutionContext CurrentExecutionContext;
+	
 public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
@@ -125,14 +111,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TSet<FFlagDescription> Flags;
-
-	FOnExecutionFinished OnExecutionFinished;
-	
-	UConsoleCommand()
-	{
-		// get a copy of the input channel for the user input
-		UserInput = CreateDefaultSubobject<UCommandUserInput>(FName(TEXT("UserInput")));
-	}
 	
 	UFUNCTION(BlueprintPure)
 	bool GetIntArgument(FName ArgumentName, int32& Value) const
@@ -194,6 +172,85 @@ public:
 		CurrentExecutionContext.StdOut->Write(Message);
 	}
 
+	bool IsPersistent() const
+	{
+		return LifecycleType == ECommandLifecycleType::Persistent;
+	}
+	
+	const UParameter* FindNamedParamByLongName(const FName& Name);
+	const UParameter* FindNamedParamByShortName(const FName& Name);
+	
+	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext, return -1;);
+	
+	UFUNCTION(BlueprintImplementableEvent, meta=(
+		ToolTip = "Override this to provide parameter allowed values dynamically"))
+	void GetAllowedValues(const FName& ParamName, TSet<FString>& OutValues) const;
+
+	UFUNCTION(BlueprintImplementableEvent, meta=(
+		ToolTip = "Whether this command makes sense in current context. The logic can depend on the loaded level, game mode, presence of certain actors, player controller class etc. etc."))
+	bool IsRelevantInCurrentContext() const;
+
+	/**
+	 * a way for the command to check if a parameter value is in the allowed set
+	 *
+	 * use this for parameter values for which allowed values are resolved dynamically by the command itself
+	 *
+	 * NOTE: this does NOT check if the value is in static set defined in the parameter, this ONLY checks against
+	 * the dynamic set of allowed values returned by the command itself
+	 * @param LongParamName 
+	 * @param Value 
+	 * @return 
+	 */
+	bool CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const;
+};
+
+UCLASS(Blueprintable, meta=(ShowWorldContextPin,
+	ToolTip = "A latent console command can execute over multiple frames and must exist finish execution with its 'Finish' method"))
+class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
+{
+	GENERATED_BODY()
+
+	DECLARE_DELEGATE(FOnAbortCommand);
+	FOnAbortCommand OnCommandAborted;
+
+	DECLARE_DELEGATE(FOnExecutionFinished);
+
+	/**
+	 * this command's input channel
+	 */
+	UPROPERTY()
+	TObjectPtr<UCommandUserInput> UserInput;
+	
+	// if user needs to supply input for this command to resume
+	bool bIsWaitingForUserInput;
+
+	bool bHasFinished; // whether this command has finished execution
+	
+protected:
+	/**
+	 * implement command execution logic here
+	 *
+	 * note that this function takes no arguments, access them with the corresponding class methods instead
+	 * @return integer return code
+	 */
+	UFUNCTION(BlueprintImplementableEvent)
+	void ExecuteImpl();
+
+public:
+	FOnExecutionFinished OnExecutionFinished;
+
+	ULatentConsoleCommand()
+	{
+		UserInput = CreateDefaultSubobject<UCommandUserInput>(FName(TEXT("UserInput")));
+	}
+	
+	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) override
+	{
+		CurrentExecutionContext = Context;
+		ExecuteImpl();
+		return 0; // TODO
+	}
+
 	// pause execution, print the prompt to stdout and wait for the user answer
 	UFUNCTION(BlueprintCallable, meta=(Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", ExpandEnumAsExecs = "Result"))
 	void RequireUserInput(const UObject* WorldContextObject, const FString& Prompt, FLatentActionInfo LatentInfo, FString& OutUserInput, EReadUserInputResult& Result);
@@ -239,53 +296,26 @@ public:
 	
 	// whether this console command is currently waiting for user input
 	bool IsWaitingForUserInput() const;
+};
 
-	bool IsPersistent() const
-	{
-		return LifecycleType == ECommandLifecycleType::Persistent;
-	}
-	
-	const UParameter* FindNamedParamByLongName(const FName& Name);
-	const UParameter* FindNamedParamByShortName(const FName& Name);
-	
+UCLASS(Blueprintable, meta=(ShowWorldContextPin,
+	ToolTip = "A console command that finishes execution its logic within a single frame"))
+class INGAMECONSOLE_API UConsoleCommand : public UConsoleCommandBase
+{
+	GENERATED_BODY()
+
 protected:
-	/**
-	 * implement command execution logic here
-	 *
-	 * note that this function takes no arguments, access them with the corresponding class methods instead
-	 * @return integer return code
-	 */
+
 	UFUNCTION(BlueprintImplementableEvent)
 	void ExecuteImpl();
-	
+
 public:
-	int32 ExecuteWithContext(const FCommandExecutionContext& Context)
+	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) override
 	{
 		CurrentExecutionContext = Context;
 		ExecuteImpl();
 		return 0; // TODO
 	}
-	
-	UFUNCTION(BlueprintImplementableEvent, meta=(
-		ToolTip = "Override this to provide parameter allowed values dynamically"))
-	void GetAllowedValues(const FName& ParamName, TSet<FString>& OutValues) const;
-
-	UFUNCTION(BlueprintImplementableEvent, meta=(
-		ToolTip = "Whether this command makes sense in current context. The logic can depend on the loaded level, game mode, presence of certain actors, player controller class etc. etc."))
-	bool IsRelevantInCurrentContext() const;
-
-	/**
-	 * a way for the command to check if a parameter value is in the allowed set
-	 *
-	 * use this for parameter values for which allowed values are resolved dynamically by the command itself
-	 *
-	 * NOTE: this does NOT check if the value is in static set defined in the parameter, this ONLY checks against
-	 * the dynamic set of allowed values returned by the command itself
-	 * @param LongParamName 
-	 * @param Value 
-	 * @return 
-	 */
-	bool CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const;
 };
 
 /**
@@ -299,5 +329,5 @@ class UConsoleCommandSet : public UDataAsset
 	
 public:
 	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
-	TSet<TSubclassOf<UConsoleCommand>> Commands;
+	TSet<TSubclassOf<UConsoleCommandBase>> Commands;
 };

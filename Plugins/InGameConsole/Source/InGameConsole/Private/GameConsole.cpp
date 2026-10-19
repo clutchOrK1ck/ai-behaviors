@@ -1,11 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "GameConsole.h"
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
-bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
+bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
                                                                          bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
 {
 	if (!bIsExecutingInForeground)
@@ -19,11 +19,11 @@ bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCom
 	return true;
 }
 
-UConsoleCommand* UGameConsole::FindCommandTemplate(const FName& CommandName, bool ContextRelevant) const
+UConsoleCommandBase* UGameConsole::FindCommandTemplate(const FName& CommandName, bool ContextRelevant) const
 {
-	for (TSubclassOf<UConsoleCommand> CommandCls : Commands)
+	for (TSubclassOf<UConsoleCommandBase> CommandCls : Commands)
 	{
-		UConsoleCommand* CDO = CommandCls.GetDefaultObject();
+		UConsoleCommandBase* CDO = CommandCls.GetDefaultObject();
 		if (CDO->CommandName.IsEqual(CommandName))
 		{
 			if (!ContextRelevant || CDO->IsRelevantInCurrentContext())
@@ -105,6 +105,12 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 	// check that remote execution component exists on the player controller
 	if (bRemoteExecution)
 	{
+		if (CommandTemplate->IsA<ULatentConsoleCommand>())
+		{
+			StdErr->Write("Remote execution of latent commands is not allowed");
+			return;
+		}
+		
 		URemoteExecutionComponent* RemoteExecutionComponent = Requester->FindComponentByClass<URemoteExecutionComponent>();
 		if (!RemoteExecutionComponent)
 		{
@@ -151,7 +157,7 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 	const APlayerController* Requester = UGameplayStatics::GetPlayerController(World, 0);
 		
 	// is there a foreground command that waits for user input?
-	if (UConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
+	if (ULatentConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
 	{
 		if (ForegroundCommand->IsWaitingForUserInput())
 		{
@@ -201,7 +207,7 @@ void UGameConsole::Reset()
 
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant) const
 {
-	for (const TSubclassOf<UConsoleCommand>& CommandCls : Commands)
+	for (const TSubclassOf<UConsoleCommandBase>& CommandCls : Commands)
 	{
 		if (!bContextRelevant || CommandCls.GetDefaultObject()->IsRelevantInCurrentContext())
 		{
@@ -218,7 +224,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	}
 	
 	// see if there's a foreground command waiting for user input - in this case we delegate auto-completion to the command
-	if (const UConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
+	if (const ULatentConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
 	{
 		if (ForegroundCommand->IsWaitingForUserInput() && ForegroundCommand->StaticClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 		{
@@ -249,7 +255,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	}
 
 	// the user is trying to auto-complete parameter name or parameter value - in this case though we first need to know which command
-	UConsoleCommand* Command = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
+	UConsoleCommandBase* Command = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
 
 	if (!Command)
 	{

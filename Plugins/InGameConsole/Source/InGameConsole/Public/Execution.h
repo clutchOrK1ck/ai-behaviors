@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 #include "Execution.generated.h"
 
 UCLASS(Abstract)
@@ -16,17 +16,17 @@ class UCommandExecutor : public UObject
 	 * keeps references to persistent commands (commands that are instantiated once on the first invocation and kept alive for the entire game instance lifetime)
 	 */
 	UPROPERTY()
-	TArray<UConsoleCommand*> PersistentCommands;
+	TArray<UConsoleCommandBase*> PersistentCommands;
 	
 	UPROPERTY()
-	TArray<UConsoleCommand*> RunningInBackground;
+	TArray<ULatentConsoleCommand*> RunningInBackground;
 
 	UPROPERTY()
-	UConsoleCommand* RunningInForeground = nullptr;
+	ULatentConsoleCommand* RunningInForeground = nullptr;
 	
 protected:
 	
-	virtual bool FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
+	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
 		bool bIsExecutingInForeground,
 		ITextPipe*& OutStdOut,
 		ITextPipe*& OutStdErr)
@@ -34,17 +34,23 @@ protected:
 		return false;
 	}
 
-	void HandleExecutionFinished(UConsoleCommand* Command, bool bForeground);
+	void HandleExecutionFinished(ULatentConsoleCommand* Command, bool bForeground);
 
-	bool ExecuteInternal(const TSubclassOf<UConsoleCommand>& CommandClass, bool bForeground, const APlayerController* Requester, const FCommandArguments& Args);
+	bool ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& CommandClass, bool bForeground, const APlayerController* Requester, const FCommandArguments& Args);
 
 public:
 	
-	bool ExecuteInBackground(const APlayerController* Requester, const TSubclassOf<UConsoleCommand>& CommandClass, const FCommandArguments& Args);
-	bool ExecuteInForeground(const APlayerController* Requester, const TSubclassOf<UConsoleCommand>& CommandClass, const FCommandArguments& Args);
+	bool ExecuteInBackground(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass, const FCommandArguments& Args);
+	bool ExecuteInForeground(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass, const FCommandArguments& Args);
 	
 	// whether this executor allows multiple commands running at the same time
 	virtual bool AllowsMultipleProcesses() const
+	{
+		return true;
+	}
+
+	// whether this executor can execute latent commands, i.e. commands executing over multiple frames
+	virtual bool CanExecuteLatentCommands() const
 	{
 		return true;
 	}
@@ -53,7 +59,7 @@ public:
 	 * a command executing 'in foreground' occupies this executor's stdout and stderr
 	 * @return
 	 */
-	virtual UConsoleCommand* GetCurrentForegroundCommand() const
+	virtual ULatentConsoleCommand* GetCurrentForegroundCommand() const
 	{
 		return RunningInForeground;
 	}
@@ -62,7 +68,7 @@ public:
 	 * an array of currently executing commands
 	 * @return 
 	 */
-	virtual TArray<UConsoleCommand*> GetRunningCommands() const;
+	virtual TArray<ULatentConsoleCommand*> GetRunningCommands() const;
 
 	/**
 	 * kills all commands being executed and clears state

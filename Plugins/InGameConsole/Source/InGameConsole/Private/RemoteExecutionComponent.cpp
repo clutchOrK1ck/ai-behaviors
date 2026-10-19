@@ -5,7 +5,7 @@
 
 #include "GameConsole.h"
 
-bool URemoteCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
+bool URemoteCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
                                                           bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
 {
 	OutStdOut = RemoteExecutionComponent->StdOut;
@@ -62,7 +62,7 @@ URemoteExecutionComponent::URemoteExecutionComponent()
 	});
 }
 
-bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommand* Command) const
+bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommandBase* Command) const
 {
 	for (const FExecutionAuthority& Auth : ExecutionAuthorityList)
 	{
@@ -82,7 +82,7 @@ bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommand* 
 	return false;
 }
 
-void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassOf<UConsoleCommand> CommandClass,
+void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassOf<UConsoleCommandBase> CommandClass,
 	const FCommandArguments& Args)
 {
 	// server-side control for malicious execution attempts

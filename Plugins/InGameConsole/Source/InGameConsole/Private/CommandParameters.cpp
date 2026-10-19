@@ -2,7 +2,7 @@
 
 
 #include "CommandParameters.h"
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 
 bool FCommandArguments::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
 {
@@ -13,7 +13,7 @@ bool FCommandArguments::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutS
 	return true;
 }
 
-bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, int32& OutValue,
+bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, int32& OutValue,
                                          FString& ErrorMessage) const
 {
 	if (!LexTryParseString(OutValue, *Value))
@@ -68,7 +68,7 @@ bool FStringValidationSettings::Validate(const FString& Value, FString& OutError
 	}
 }
 
-bool UStringParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, FString& OutValue,
+bool UStringParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FString& OutValue,
                                         FString& ErrorMessage) const
 {
 	if (Validation.bProvideAllowedValuesDynamically)
@@ -121,7 +121,7 @@ bool UListParameter::RequestAutocompletions_Implementation(const FString& String
 	return false;
 }
 
-bool UListParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, TArray<FString>& OutValue,
+bool UListParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, TArray<FString>& OutValue,
                                       FString& ErrorMessage) const
 {
 	// if not already done by the parser, remove the list brackets and the trailing spaces
@@ -155,7 +155,7 @@ bool UListParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 	return true;
 }
 
-bool UVectorParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, FVector& OutValue,
+bool UVectorParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FVector& OutValue,
 	FString& ErrorMessage) const
 {
 	// remove square brackets (parser should have taken care, just in case)
@@ -187,7 +187,7 @@ bool UVectorParameter::ParseAndValidate(const FString& Value, const UConsoleComm
 	return true;
 }
 
-bool UBoolParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, bool& OutValue,
+bool UBoolParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, bool& OutValue,
                                       FString& ErrorMessage) const
 {
 	if (Value.IsEmpty())
@@ -208,7 +208,7 @@ bool UBoolParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 	return false;
 }
 
-bool URealParameter::ParseAndValidate(const FString& Value, const UConsoleCommand* Command, double& OutValue,
+bool URealParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, double& OutValue,
 	FString& ErrorMessage) const
 {
 	if (!LexTryParseString(OutValue, *Value))

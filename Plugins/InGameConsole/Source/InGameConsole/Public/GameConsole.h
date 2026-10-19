@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AutoCompletionProvider.h"
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 #include "ConsoleWidget.h"
 #include "Parser.h"
 #include "Execution.h"
@@ -59,7 +59,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UConsoleWidget* Widget = nullptr;
 
 	// a set of all commands known to this console
-	TSet<TSubclassOf<UConsoleCommand>> Commands;
+	TSet<TSubclassOf<UConsoleCommandBase>> Commands;
 
 	// history of executed commands
 	TArray<FString> ExecutionHistory;
@@ -70,7 +70,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	 * @param ContextRelevant return only if the command is relative in current context
 	 * @return 
 	 */
-	UConsoleCommand* FindCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
+	UConsoleCommandBase* FindCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
 
 	void InitializeInputComponent();
 
@@ -212,7 +212,7 @@ public:
 		return false;
 	}
 
-	virtual bool FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand,
+	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
 	                                                    bool bIsExecutingInForeground, ITextPipe*& OutStdOut,
 	                                                    ITextPipe*& OutStdErr) override;
 };

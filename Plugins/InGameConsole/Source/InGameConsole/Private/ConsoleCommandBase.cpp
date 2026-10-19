@@ -1,13 +1,13 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 
-void UConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
-                                       const FString& Prompt,
-                                       FLatentActionInfo LatentInfo,
-                                       FString& OutUserInput,
-                                       EReadUserInputResult& Result)
+void ULatentConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
+                                           const FString& Prompt,
+                                           FLatentActionInfo LatentInfo,
+                                           FString& OutUserInput,
+                                           EReadUserInputResult& Result)
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 	{
@@ -38,7 +38,7 @@ void UConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
 	}
 }
 
-void UConsoleCommand::Finish(const int32 InExitCode)
+void ULatentConsoleCommand::Finish(const int32 InExitCode)
 {
 	bHasFinished = true;
 	this->ExitCode = InExitCode;
@@ -47,12 +47,12 @@ void UConsoleCommand::Finish(const int32 InExitCode)
 	// note: we don't kill the object, command lifetimes are managed by the command executor
 }
 
-bool UConsoleCommand::IsWaitingForUserInput() const
+bool ULatentConsoleCommand::IsWaitingForUserInput() const
 {
 	return bIsWaitingForUserInput;
 }
 
-const UParameter* UConsoleCommand::FindNamedParamByLongName(const FName& Name)
+const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name)
 {
 	return NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
@@ -60,7 +60,7 @@ const UParameter* UConsoleCommand::FindNamedParamByLongName(const FName& Name)
 	})->Get();
 }
 
-const UParameter* UConsoleCommand::FindNamedParamByShortName(const FName& Name)
+const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Name)
 {
 	return NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
@@ -68,7 +68,7 @@ const UParameter* UConsoleCommand::FindNamedParamByShortName(const FName& Name)
 	})->Get();
 }
 
-bool UConsoleCommand::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const
+bool UConsoleCommandBase::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const
 {
 	TSet<FString> AllowedValues;
 	GetAllowedValues(LongParamName, AllowedValues);

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ConsoleCommand.h"
+#include "ConsoleCommandBase.h"
 #include "Execution.h"
 #include "Components/ActorComponent.h"
 #include "StructUtils/InstancedStruct.h"
@@ -75,10 +75,10 @@ public:
 	// Sets default values for this component's properties
 	URemoteExecutionComponent();
 	
-	bool IsPlayerAllowedToExecute(const UConsoleCommand* Command) const;
+	bool IsPlayerAllowedToExecute(const UConsoleCommandBase* Command) const;
 	
 	UFUNCTION(Server, Reliable)
-	void ExecuteCommandOnServer(TSubclassOf<UConsoleCommand> CommandClass, const FCommandArguments& Args);
+	void ExecuteCommandOnServer(TSubclassOf<UConsoleCommandBase> CommandClass, const FCommandArguments& Args);
 
 	UFUNCTION(Client, Reliable)
 	void ReceiveCommandFeedbackOnClient(const FString& Message, bool bIsStdErr);
@@ -98,11 +98,15 @@ class URemoteCommandExecutor : public UCommandExecutor
 	URemoteExecutionComponent* RemoteExecutionComponent;
 
 protected:
-	virtual bool FindOutputChannelsForCommand(const UConsoleCommand* ConsoleCommand, bool bIsExecutingInForeground,
+	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand, bool bIsExecutingInForeground,
 		ITextPipe*& OutStdOut, ITextPipe*& OutStdErr) override;
 	
 public:
 	virtual bool AllowsMultipleProcesses() const override;
+	virtual bool CanExecuteLatentCommands() const override
+	{
+		return false;
+	}
 	
 	void Initialize(URemoteExecutionComponent* InRemoteExecutionComponent);
 };

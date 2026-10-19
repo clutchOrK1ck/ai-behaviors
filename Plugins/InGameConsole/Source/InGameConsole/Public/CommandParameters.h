@@ -7,7 +7,7 @@
 #include "UObject/Object.h"
 #include "CommandParameters.generated.h"
 
-class UConsoleCommand;
+class UConsoleCommandBase;
 
 /**
  * only six accepted argument types
@@ -82,7 +82,7 @@ class TConsoleParameter
 {
 public:
 	virtual FName GetParamName() const = 0;
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, T& OutValue, FString& ErrorMessage) const = 0;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, T& OutValue, FString& ErrorMessage) const = 0;
 	virtual T GetDefaultValue() const = 0;
 	virtual bool IsRequired() const = 0;
 	virtual ~TConsoleParameter() = default;
@@ -130,7 +130,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
 	int32 MaxValue = MAX_int32;
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, int32& OutValue, FString& ErrorMessage) const override;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, int32& OutValue, FString& ErrorMessage) const override;
 
 	virtual int32 GetDefaultValue() const override
 	{
@@ -196,7 +196,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation")
 	FStringValidationSettings Validation;
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, FString& OutValue, FString& ErrorMessage) const override;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FString& OutValue, FString& ErrorMessage) const override;
 
 	virtual FString GetDefaultValue() const override
 	{
@@ -229,7 +229,7 @@ public:
 		ToolTip = "Validation will be applied to each member of the list"))
 	FStringValidationSettings Validation;
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, TArray<FString>& OutValue, FString& ErrorMessage) const override;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, TArray<FString>& OutValue, FString& ErrorMessage) const override;
 
 	virtual TArray<FString> GetDefaultValue() const override
 	{
@@ -259,7 +259,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FVector DefaultValue;
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, FVector& OutValue, FString& ErrorMessage) const override;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FVector& OutValue, FString& ErrorMessage) const override;
 
 	virtual FVector GetDefaultValue() const override
 	{
@@ -287,7 +287,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	bool DefaultValue;
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, bool& OutValue, FString& ErrorMessage) const override;
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, bool& OutValue, FString& ErrorMessage) const override;
 
 	virtual bool GetDefaultValue() const override
 	{
@@ -329,7 +329,7 @@ public:
 		return Name;
 	}
 	
-	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommand* Command, double& OutValue,
+	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, double& OutValue,
 		FString& ErrorMessage) const override;
 	
 	virtual double GetDefaultValue() const override
@@ -370,7 +370,7 @@ struct FFlagDescription
 };
 
 template<typename T>
-bool InitArgumentValue(const TConsoleParameter<T>* ParamSpec,  const FString* Value, FCommandArguments& OutArgs, const UConsoleCommand* Command, FString& OutError)
+bool InitArgumentValue(const TConsoleParameter<T>* ParamSpec,  const FString* Value, FCommandArguments& OutArgs, const UConsoleCommandBase* Command, FString& OutError)
 {
 	if (Value == nullptr)
 	{
@@ -394,7 +394,7 @@ bool InitArgumentValue(const TConsoleParameter<T>* ParamSpec,  const FString* Va
 	return true;
 }
 
-inline bool InitArgumentValue(const UParameter* ParamSpec, const FString* Value, FCommandArguments& OutArgs, const UConsoleCommand* Command, FString& OutError)
+inline bool InitArgumentValue(const UParameter* ParamSpec, const FString* Value, FCommandArguments& OutArgs, const UConsoleCommandBase* Command, FString& OutError)
 {
 	if (const auto* IntParam = Cast<UIntegerParameter>(ParamSpec))
 	{

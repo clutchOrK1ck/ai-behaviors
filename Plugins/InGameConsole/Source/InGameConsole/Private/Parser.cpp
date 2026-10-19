@@ -24,7 +24,7 @@ void FTokenizer::ParseImpl()
 	}
 }
 
-bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCommand* Command,
+bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCommandBase* Command,
                                 FCommandArguments& OutArgs, FString& OutError)
 {
 	// -- positional parameters --
