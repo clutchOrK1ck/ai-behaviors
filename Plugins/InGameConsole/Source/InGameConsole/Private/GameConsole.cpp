@@ -19,6 +19,19 @@ bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCom
 	return true;
 }
 
+void UGameConsoleInputSubsystem::PlayerControllerChanged(APlayerController* NewPlayerController)
+{
+	Super::PlayerControllerChanged(NewPlayerController);
+
+	if (const UGameConsole* Console = GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>())
+	{
+		NewPlayerController->PushInputComponent(Console->GetInputComponent());
+	} else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Error while trying to push console input component: game console subsystem not found"));
+	}
+}
+
 UConsoleCommandBase* UGameConsole::FindCommandTemplate(const FName& CommandName, bool ContextRelevant) const
 {
 	for (TSubclassOf<UConsoleCommandBase> CommandCls : Commands)

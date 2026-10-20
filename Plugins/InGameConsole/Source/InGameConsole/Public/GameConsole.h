@@ -94,7 +94,7 @@ public:
 	 * returns an input component that can open this console 
 	 * @return 
 	 */
-	UInputComponent* GetInputComponent()
+	UInputComponent* GetInputComponent() const
 	{
 		return InputComponent;
 	}
@@ -215,4 +215,13 @@ public:
 	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
 	                                                    bool bIsExecutingInForeground, ITextPipe*& OutStdOut,
 	                                                    ITextPipe*& OutStdErr) override;
+};
+
+UCLASS()
+class UGameConsoleInputSubsystem : public ULocalPlayerSubsystem
+{
+	GENERATED_BODY()
+	
+public:
+	virtual void PlayerControllerChanged(APlayerController* NewPlayerController) override;
 };
