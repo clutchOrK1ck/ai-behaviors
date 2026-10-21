@@ -37,7 +37,7 @@ protected:
 	void HandleExecutionFinished(ULatentConsoleCommand* Command, bool bForeground);
 	
 	bool ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& CommandClass, bool bForeground, const APlayerController* Requester, const FCommandArguments& Args);
-
+	
 public:
 	
 	bool ExecuteInBackground(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass, const FCommandArguments& Args);

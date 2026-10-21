@@ -234,6 +234,8 @@ class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 	bool bIsWaitingForUserInput;
 
 	bool bIsExecuting; // whether this command is currently executing
+
+	void FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason Reason);
 	
 protected:
 	/**

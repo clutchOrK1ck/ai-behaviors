@@ -3,6 +3,33 @@
 
 #include "ConsoleCommandBase.h"
 
+void ULatentConsoleCommand::FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason Reason)
+{
+	bIsExecuting = false;
+	bIsWaitingForUserInput = false;
+
+	// let the blueprint also handle execution finish
+	OnExecutionEnding(Reason);
+
+	if (IsPersistent()) // non-persistent commands are simply destroyed by the executor
+	{
+		if (CurrentExecutionContext.Caller) // TODO bad that this depends on the caller
+		{
+			CurrentExecutionContext.Caller->GetWorld()->GetLatentActionManager().RemoveActionsForObject(this);
+		}
+
+		UserInput->OnNewItem.Clear();
+	}
+
+	if (Reason == EOnLatentCommandExecutionEndingReason::ExecutionFinished)
+	{
+		OnExecutionFinished.ExecuteIfBound(); // TODO this could be one delegate taking the enum
+	} else if (Reason == EOnLatentCommandExecutionEndingReason::ExecutionAborted)
+	{
+		OnCommandAborted.ExecuteIfBound();
+	}
+}
+
 void ULatentConsoleCommand::ExecuteWithContext(const FCommandExecutionContext& Context)
 {
 	CurrentExecutionContext = Context;
@@ -44,14 +71,9 @@ void ULatentConsoleCommand::Finish(const int32 InExitCode)
 		UE_LOG(LogTemp, Error, TEXT("Called finished execution on the latent command but the command is not executing"));
 		return;
 	}
-
-	// let the blueprint handle execution finish
-	OnExecutionEnding(EOnLatentCommandExecutionEndingReason::ExecutionFinished);
 	
-	bIsExecuting = false;
 	this->ExitCode = InExitCode;
-	OnExecutionFinished.ExecuteIfBound();
-	// note: we don't kill the object, command lifetimes are managed by the command executor
+	FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason::ExecutionFinished);
 }
 
 bool ULatentConsoleCommand::PushUserInput(const FString& Input)
@@ -73,24 +95,8 @@ void ULatentConsoleCommand::Abort()
 		UE_LOG(LogTemp, Error, TEXT("Called 'Abort' on a latent command but the command is not executing"));
 		return;
 	}
-
-	// let the blueprint handle abortion
-	OnExecutionEnding(EOnLatentCommandExecutionEndingReason::ExecutionAborted);
-
-	// if command isn't persistent, its uobject is destroyed, effectively handling the clean-up
-	if (IsPersistent())
-	{
-		// clean up latent actions for this command
-		if (CurrentExecutionContext.Caller)
-		{
-			if (UWorld* World = CurrentExecutionContext.Caller->GetWorld())
-			{
-				World->GetLatentActionManager().RemoveActionsForObject(this);
-			}
-		}
-	}
-
-	OnCommandAborted.ExecuteIfBound();
+	
+	FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason::ExecutionAborted);
 }
 
 const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name)

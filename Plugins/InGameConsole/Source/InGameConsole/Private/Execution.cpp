@@ -42,7 +42,7 @@ bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& C
 	{
 		const auto Existing = PersistentCommands.FindByPredicate([&CommandClass](const UConsoleCommandBase* Command)
 		{
-			return Command->IsA(CommandClass.Get());
+			return Command->GetClass() == CommandClass.Get();
 		});
 
 		if (Existing != nullptr)
@@ -60,6 +60,7 @@ bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& C
 
 	if (!FindOutputChannelsForCommand(CommandInstance, bForeground, ExecutionContext.StdOut, ExecutionContext.StdErr))
 	{
+		PersistentCommands.Remove(CommandInstance);
 		CommandInstance->MarkAsGarbage();
 		return false;
 	}
@@ -149,21 +150,14 @@ TArray<ULatentConsoleCommand*> UCommandExecutor::GetRunningCommands() const
 
 void UCommandExecutor::Reset()
 {
-	for (UConsoleCommandBase* Persistent : PersistentCommands)
+	for (auto RunningCommand : GetRunningCommands())
 	{
-		Persistent->MarkAsGarbage(); // TODO do we need special clean-ups or additional command-killing logic?
+		RunningCommand->Abort();
+	}
+
+	for (auto Persistent : PersistentCommands)
+	{
+		Persistent->MarkAsGarbage();
 	}
 	PersistentCommands.Empty();
-
-	for (UConsoleCommandBase* BackgroundCommand : RunningInBackground)
-	{
-		BackgroundCommand->MarkAsGarbage();
-	}
-	RunningInBackground.Empty();
-
-	if (RunningInForeground != nullptr)
-	{
-		RunningInForeground->MarkAsGarbage();
-		RunningInForeground = nullptr;
-	}
 }

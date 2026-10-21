@@ -57,7 +57,7 @@ bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCom
 		{
 			TokenIdx = Tokens.IndexOfByPredicate([ParamSpec](const FString& Token)
 			{
-				return Token == FString("-" + ParamSpec->Name.ToString());
+				return Token == FString("-" + ParamSpec->ShortName.ToString());
 			});
 		}
 

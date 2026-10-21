@@ -92,11 +92,7 @@ bool UStringParameter::ParseAndValidate(const FString& Value, const UConsoleComm
 			ErrorMessage = FString::Format(TEXT("{0} is not in the set of allowed values"), {Name.ToString()});
 			return false;
 		}
-		
-		return true;
-	}
-	
-	if (!Validation.Validate(Value, ErrorMessage))
+	} else if (!Validation.Validate(Value, ErrorMessage))
 	{
 		return false;
 	}
@@ -149,16 +145,12 @@ bool UListParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 	{
 		if (Validation.bProvideAllowedValuesDynamically)
 		{
-			if (!Command->CheckParamValueIsInAllowedSet(Name, Value))
+			if (!Command->CheckParamValueIsInAllowedSet(Name, Member))
 			{
 				ErrorMessage = FString::Format(TEXT("{0} is not in the set of allowed values"), {Name.ToString()});
 				return false;
 			}
-		
-			return true;
-		}
-		
-		if (!Validation.Validate(Member, ErrorMessage))
+		} else if (!Validation.Validate(Member, ErrorMessage))
 		{
 			return false;
 		}
