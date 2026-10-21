@@ -19,9 +19,15 @@ enum class EExecutionAuthorityType : uint8
 /**
  * authority to execute any or one particular command
  */
+USTRUCT()
 struct FExecutionAuthority
 {
+	GENERATED_BODY()
+
+	UPROPERTY()
 	EExecutionAuthorityType Type;
+
+	UPROPERTY()
 	FString Key; // this can mean different things depending on the authority type
 };
 
@@ -56,6 +62,7 @@ class INGAMECONSOLE_API URemoteExecutionComponent : public UActorComponent
 	friend class URemoteExecutionSubsystem;
 
 	// a replicated array of execution authority items
+	UPROPERTY(Replicated)
 	TArray<FExecutionAuthority> ExecutionAuthorityList;
 
 	UPROPERTY()
@@ -75,6 +82,10 @@ public:
 	URemoteExecutionComponent();
 	
 	bool IsPlayerAllowedToExecute(const UConsoleCommandBase* Command) const;
+
+	APlayerController* GetOwningController() const;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	UFUNCTION(Server, Reliable)
 	void ExecuteCommandOnServer(TSubclassOf<UConsoleCommandBase> CommandClass, const FCommandArguments& Args);
@@ -101,7 +112,11 @@ protected:
 		ITextPipe*& OutStdOut, ITextPipe*& OutStdErr) override;
 	
 public:
-	virtual bool AllowsMultipleProcesses() const override;
+	virtual bool AllowsMultipleProcesses() const override
+	{
+		return false; // because it does not execute latent commands
+	}
+	
 	virtual bool CanExecuteLatentCommands() const override
 	{
 		return false;

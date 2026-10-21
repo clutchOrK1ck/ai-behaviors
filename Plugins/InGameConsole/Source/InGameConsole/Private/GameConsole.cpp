@@ -204,6 +204,8 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 			// simply swallow
 			StdOut->Write(Input);
 		}
+
+		return;
 	}
 
 	// else - this must be a new command request

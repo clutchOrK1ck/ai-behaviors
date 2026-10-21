@@ -25,7 +25,7 @@ void UCommandExecutor::HandleExecutionFinished(ULatentConsoleCommand* Command, b
 bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& CommandClass, bool bForeground,
                                        const APlayerController* Requester, const FCommandArguments& Args)
 {
-	if (CommandClass.Get() == ULatentConsoleCommand::StaticClass() && !CanExecuteLatentCommands())
+	if (CommandClass->IsChildOf(ULatentConsoleCommand::StaticClass()) && !CanExecuteLatentCommands())
 	{
 		return false;
 	}

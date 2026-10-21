@@ -52,7 +52,7 @@ public:
 	}
 
 private:
-	FString OutUserInput;
+	FString& OutUserInput;
 	bool bUserReplied = false;
 	FName ExecutionFunction;
 	int32 OutputLink;

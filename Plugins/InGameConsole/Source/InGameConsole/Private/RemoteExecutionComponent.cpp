@@ -4,6 +4,7 @@
 #include "RemoteExecutionComponent.h"
 
 #include "GameConsole.h"
+#include "Net/UnrealNetwork.h"
 
 bool URemoteCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
                                                           bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
@@ -30,11 +31,6 @@ void URemoteExecutionComponent::ReceiveCommandFeedbackOnClient_Implementation(co
 	}
 }
 
-bool URemoteCommandExecutor::AllowsMultipleProcesses() const
-{
-	return true; // TODO yes?
-}
-
 void URemoteCommandExecutor::Initialize(URemoteExecutionComponent* InRemoteExecutionComponent)
 {
 	this->RemoteExecutionComponent = InRemoteExecutionComponent;
@@ -43,6 +39,7 @@ void URemoteCommandExecutor::Initialize(URemoteExecutionComponent* InRemoteExecu
 URemoteExecutionComponent::URemoteExecutionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	this->SetIsReplicatedByDefault(true);
 
 	StdOut = CreateDefaultSubobject<USimpleTextPipe>("StdOut");
 	StdErr = CreateDefaultSubobject<USimpleTextPipe>("StdErr");
@@ -71,9 +68,15 @@ bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommandBa
 		case EExecutionAuthorityType::All:
 			return true;
 		case EExecutionAuthorityType::AllInCategory:
-			return Command->Category.Equals(Auth.Key); // TODO categories can be empty
+			if (Command->Category.Equals(Auth.Key)) // TODO categories can be empty
+			{
+				return true;
+			}
 		case EExecutionAuthorityType::SingleCommand:
-			return Command->CommandName.ToString().Equals(Auth.Key);
+			if (Command->CommandName.ToString().Equals(Auth.Key))
+			{
+				return true;
+			}
 		default:
 			return false;
 		}
@@ -82,8 +85,22 @@ bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommandBa
 	return false;
 }
 
+APlayerController* URemoteExecutionComponent::GetOwningController() const
+{
+	return Cast<APlayerController>(GetOwner());
+}
+
+void URemoteExecutionComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(URemoteExecutionComponent,
+		ExecutionAuthorityList,
+		COND_OwnerOnly);
+}
+
 void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassOf<UConsoleCommandBase> CommandClass,
-	const FCommandArguments& Args)
+                                                                      const FCommandArguments& Args)
 {
 	// server-side control for malicious execution attempts
 	if (!IsPlayerAllowedToExecute(CommandClass.GetDefaultObject()))
@@ -91,13 +108,26 @@ void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassO
 		return;
 	}
 
-	
+	RemoteCommandExecutor->ExecuteInForeground(GetOwningController(), CommandClass, Args);
 }
 
 void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(EExecutionAuthorityType Type,
                                                                                const FString& Key)
 {
-	
+	// create new authority request in server's remote execution subsystem
+	FExecutionAuthorityRequest NewRequest;
+
+	NewRequest.Requester = GetOwningController();
+	NewRequest.Type = Type;
+	NewRequest.Key = Key;
+
+	if (auto RemoteExecutionSubsystem = GetWorld()->GetSubsystem<URemoteExecutionSubsystem>())
+	{
+		RemoteExecutionSubsystem->AddRemoteExecutionAuthorityRequest(NewRequest);
+	} else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Remote execution subsystem not found"));
+	}
 }
 
 
