@@ -29,16 +29,8 @@ void ULatentConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
 			if (this->UserInput->OnNewItem.IsBound())
 			{
 				this->UserInput->OnNewItem.Clear();
-				this->UserInput->OnNewItem.AddRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
 			}
-
-			// TODO
-			/*// make the action listen to the abort events of this command
-			if (this->OnCommandAborted.IsBound())
-			{
-				this->OnCommandAborted.Unbind();
-				this->OnCommandAborted.BindRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::Abort);
-			}*/
+			this->UserInput->OnNewItem.AddRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
 			
 			World->GetLatentActionManager().AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, AwaitUserInputAction);
 		}
@@ -103,18 +95,28 @@ void ULatentConsoleCommand::Abort()
 
 const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name)
 {
-	return NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
+	if (const TObjectPtr<UParameter>* Result = NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
 		return Parameter->Name.IsEqual(Name);
-	})->Get();
+	}))
+	{
+		return Result->Get();
+	}
+
+	return nullptr;
 }
 
 const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Name)
 {
-	return NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
+	if (const TObjectPtr<UParameter>* Result = NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
 		return Parameter->ShortName.IsEqual(Name);
-	})->Get();
+	}))
+	{
+		return Result->Get();
+	}
+
+	return nullptr;
 }
 
 bool UConsoleCommandBase::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const

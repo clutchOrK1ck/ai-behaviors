@@ -78,18 +78,26 @@ void UGameConsole::InitializeInputComponent()
 
 void UGameConsole::InitializeWidget()
 {
-	Widget = CreateWidget<UConsoleWidget>(this->GetGameInstance(), WidgetClass.Get());
-
-	// make the widget listen to stdout and stderr of the game console
-	this->StdOut->OnNewItem.AddLambda([this](const FString& Line)
+	if (WidgetClass.Get() != nullptr)
 	{
-		Widget->OnNewLine(Line, EConsoleLineType::Display);
-	});
+		Widget = CreateWidget<UConsoleWidget>(this->GetGameInstance(), WidgetClass.Get());
 
-	this->StdErr->OnNewItem.AddLambda([this](const FString& Line)
-	{
-		Widget->OnNewLine(Line, EConsoleLineType::Error);
-	});
+		if (!Widget)
+		{
+			return;
+		}
+
+		// make the widget listen to stdout and stderr of the game console
+		this->StdOut->OnNewItem.AddLambda([this](const FString& Line)
+		{
+			Widget->OnNewLine(Line, EConsoleLineType::Display);
+		});
+
+		this->StdErr->OnNewItem.AddLambda([this](const FString& Line)
+		{
+			Widget->OnNewLine(Line, EConsoleLineType::Error);
+		});
+	}
 }
 
 void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, const FString& Command)
@@ -154,8 +162,20 @@ void UGameConsole::ShowUI()
 {
 	if (Widget == nullptr)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Console widget is null when 'ShowUI' is called"));
-		InitializeWidget();
+		if (WidgetClass.Get() != nullptr)
+		{
+			InitializeWidget();
+
+			if (Widget == nullptr)
+			{
+				UE_LOG(LogTemp, Error, TEXT("Console widget initialization failed"));
+				return;
+			}
+		} else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Cannot construct console widget because widget class is not configured"));
+			return;
+		}
 	}
 
 	Widget->AddToViewport();
