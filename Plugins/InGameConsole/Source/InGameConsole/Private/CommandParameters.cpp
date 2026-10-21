@@ -13,6 +13,28 @@ bool FCommandArguments::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutS
 	return true;
 }
 
+bool FIntegerValidationSettings::Validate(const int32 Value, FString& OutError) const
+{
+	if (bRestrictRange && !CheckInRange<int32>(Value, MinValue, MaxValue))
+	{
+		OutError = FString::Format(TEXT("{0} is not in allowed range"), {Value});
+		return false;
+	}
+
+	return true;
+}
+
+bool FRealValidationSettings::Validate(const double Value, FString& OutError) const
+{
+	if (bRestrictRange && !CheckInRange<double>(Value, MinValue, MaxValue))
+	{
+		OutError = FString::Format(TEXT("{0} is not allowed range"), {Value});
+		return false;
+	}
+
+	return true;
+}
+
 bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, int32& OutValue,
                                          FString& ErrorMessage) const
 {
@@ -22,7 +44,7 @@ bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCom
 		return false;
 	}
 
-	if (bRestrictRange && !CheckInRange(OutValue, MinValue, MaxValue))
+	if (!Validation.Validate(OutValue, ErrorMessage))
 	{
 		return false;
 	}
@@ -216,7 +238,7 @@ bool URealParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 		return false;
 	}
 
-	if (bRestrictRange && !CheckInRange(OutValue, MinValue, MaxValue))
+	if (!Validation.Validate(OutValue, ErrorMessage))
 	{
 		return false;
 	}

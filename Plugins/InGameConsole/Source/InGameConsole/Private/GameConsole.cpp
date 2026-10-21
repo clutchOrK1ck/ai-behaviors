@@ -77,12 +77,12 @@ void UGameConsole::InitializeWidget()
 	Widget = CreateWidget<UConsoleWidget>(this->GetGameInstance(), WidgetClass.Get());
 
 	// make the widget listen to stdout and stderr of the game console
-	this->StdOut->OnNewLine.AddLambda([this](const FString& Line)
+	this->StdOut->OnNewItem.AddLambda([this](const FString& Line)
 	{
 		Widget->OnNewLine(Line, EConsoleLineType::Display);
 	});
 
-	this->StdErr->OnNewLine.AddLambda([this](const FString& Line)
+	this->StdErr->OnNewItem.AddLambda([this](const FString& Line)
 	{
 		Widget->OnNewLine(Line, EConsoleLineType::Error);
 	});

@@ -219,7 +219,7 @@ class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 	 * this command's input channel
 	 */
 	UPROPERTY()
-	TObjectPtr<UCommandUserInput> UserInput;
+	TObjectPtr<USimpleTextPipe> UserInput;
 	
 	// if user needs to supply input for this command to resume
 	bool bIsWaitingForUserInput;
@@ -241,7 +241,7 @@ public:
 
 	ULatentConsoleCommand()
 	{
-		UserInput = CreateDefaultSubobject<UCommandUserInput>(FName(TEXT("UserInput")));
+		UserInput = CreateDefaultSubobject<USimpleTextPipe>(FName(TEXT("UserInput")));
 	}
 	
 	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) override
@@ -280,7 +280,7 @@ public:
 	{
 		bIsWaitingForUserInput = false;
 		OnCommandAborted.ExecuteIfBound();
-		UserInput->OnNewInput.Clear();
+		UserInput->OnNewItem.Clear();
 		// TODO other. do we need to clear state or even destroy? it largely depends on whether commands should be instantiated or kept alive indefinitely and periodically clean their state
 	}
 
@@ -306,7 +306,7 @@ class INGAMECONSOLE_API UConsoleCommand : public UConsoleCommandBase
 
 protected:
 
-	UFUNCTION(BlueprintImplementableEvent)
+	UFUNCTION(BlueprintImplementableEvent, meta=(ForceAsFunction))
 	void ExecuteImpl();
 
 public:

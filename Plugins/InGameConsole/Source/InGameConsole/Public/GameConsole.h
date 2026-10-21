@@ -30,10 +30,10 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	friend class UGameConsoleCommandExecutor;
 
 	UPROPERTY()
-	TObjectPtr<UConsoleOutputStream> StdOut;
+	TObjectPtr<USimpleTextPipe> StdOut;
 
 	UPROPERTY()
-	TObjectPtr<UConsoleOutputStream> StdErr;
+	TObjectPtr<USimpleTextPipe> StdErr;
 
 	FTokenizer Tokenizer;
 	FCLIParser Parser;
@@ -82,8 +82,8 @@ public:
 	
 	UGameConsole()
 	{
-		StdOut = CreateDefaultSubobject<UConsoleOutputStream>(FName(TEXT("StandardOutput")));
-		StdErr = CreateDefaultSubobject<UConsoleOutputStream>(FName(TEXT("StandardErrorOutput")));
+		StdOut = CreateDefaultSubobject<USimpleTextPipe>(FName(TEXT("StandardOutput")));
+		StdErr = CreateDefaultSubobject<USimpleTextPipe>(FName(TEXT("StandardErrorOutput")));
 	}
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -144,24 +144,12 @@ public:
 	 */
 	void GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant = true) const;
 
-	UFUNCTION(BlueprintPure)
-	const UConsoleOutputStream* GetStdOut()
+	USimpleTextPipe* GetMutableStdOut() const
 	{
 		return StdOut;
 	}
 
-	UFUNCTION(BlueprintPure)
-	const UConsoleOutputStream* GetStdErr()
-	{
-		return StdErr;
-	}
-
-	UConsoleOutputStream* GetMutableStdOut() const
-	{
-		return StdOut;
-	}
-
-	UConsoleOutputStream* GetMutableStdErr() const
+	USimpleTextPipe* GetMutableStdErr() const
 	{
 		return StdErr;
 	}

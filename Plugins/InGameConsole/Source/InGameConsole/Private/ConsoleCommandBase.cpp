@@ -20,10 +20,10 @@ void ULatentConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
 			FLatentAwaitUserInputAction* AwaitUserInputAction = new FLatentAwaitUserInputAction(Result, LatentInfo);
 
 			// make the action listen to the input events of this command
-			if (this->UserInput->OnNewInput.IsBound())
+			if (this->UserInput->OnNewItem.IsBound()) // TODO OnNewItem is a multicast
 			{
-				this->UserInput->OnNewInput.Clear();
-				this->UserInput->OnNewInput.AddRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
+				this->UserInput->OnNewItem.Clear();
+				this->UserInput->OnNewItem.AddRaw(AwaitUserInputAction, &FLatentAwaitUserInputAction::AcceptUserInput);
 			}
 
 			// make the action listen to the abort events of this command

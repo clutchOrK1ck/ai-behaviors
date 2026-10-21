@@ -6,7 +6,9 @@
 #include "UObject/Interface.h"
 #include "AutoCompletionProvider.generated.h"
 
-UINTERFACE()
+
+UINTERFACE(meta=(
+	ToolTip = "This interface can be implemented by (latent) console commands that support their own sub-command set"))
 class UAutoCompletionProvider : public UInterface
 {
 	GENERATED_BODY()

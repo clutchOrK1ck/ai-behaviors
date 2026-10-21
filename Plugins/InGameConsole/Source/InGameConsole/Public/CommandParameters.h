@@ -11,8 +11,9 @@ class UConsoleCommandBase;
 
 /**
  * only six accepted argument types
- * - whole numbers (int32) and floating point (double)
- * - bool (can be supplied as yes/y/true/false/no/n
+ * - whole numbers (int32)
+ * - floating point (double)
+ * - bool (can be supplied as yes/y/true/false/no/n)
  * - strings, optionally enclosed in double quotes
  * - lists (TArray<FString>), members are enclosed in square brackets and separated with a space
  * - FVector, vectors must be supplied as three numeric values enclosed in square brackets and separated with a space
@@ -94,22 +95,107 @@ class UParameter : public UObject
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "0",
 		ToolTip =
 		"This argument's name. Note: also for positional arguments, you must specify the name and you access them by the name. Argument being positional only affects CLI parsing"
 	))
 	FName Name;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "0",
 		ToolTip = "Short name, when prefixed with '-' instead of '--"))
 	FName ShortName = NAME_None;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "0"))
 	FString Description;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "0"))
 	bool bRequired;
 };
+
+// --------------- VALIDATION ----------------------- 
+
+UENUM(BlueprintType)
+enum EStringValidationType
+{
+	None,
+	AllowedValueSet,
+	Regex
+};
+
+USTRUCT(BlueprintType)
+struct FStringValidationSettings
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TEnumAsByte<EStringValidationType> ValidationType = None;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
+		ToolTip = "If true, allowed values for this parameter will be returned by 'GetAllowedValues' method of the console command",
+		EditCondition = "ValidationType == EStringValidationType::AllowedValueSet",
+		EditConditionHides))
+	bool bProvideAllowedValuesDynamically;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
+		EditCondition = "ValidationType == EStringValidationType::AllowedValueSet && !bProvideAllowedValuesDynamically",
+		EditConditionHides))
+	TSet<FString> AllowedValues;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
+		EditCondition = "ValidationType == EStringValidationType::Regex",
+		EditConditionHides))
+	FString Regex;
+
+	bool Validate(const FString& Value, FString& OutError) const;
+};
+
+USTRUCT()
+struct FNumericValidationSettings
+{
+	GENERATED_BODY()
+	
+	template<typename T>
+	bool CheckInRange(T Value, T Min, T Max) const
+	{
+		return Value >= Min && Value <= Max;
+	}
+};
+
+USTRUCT(BlueprintType)
+struct FIntegerValidationSettings : public FNumericValidationSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bRestrictRange;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(EditCondition = "bRestrictRange"))
+	int32 MinValue = MIN_int32;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(EditCondition = "bRestrictRange"))
+	int32 MaxValue = MAX_int32;
+
+	bool Validate(const int32 Value, FString& OutError) const;
+};
+
+USTRUCT(BlueprintType)
+struct FRealValidationSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation")
+	bool bRestrictRange;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation", meta=(EditCondition = "bRestrictRange"))
+	double MinValue = MIN_dbl;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation", meta=(EditCondition = "bRestrictRange"))
+	double MaxValue = MAX_dbl;
+
+	bool Validate(const double Value, FString& OutError) const;
+};
+
+// --------------- VALIDATION ----------------------- !//
 
 UCLASS(BlueprintType, EditInlineNew)
 class UIntegerParameter : public UParameter, public TConsoleParameter<int32>
@@ -118,17 +204,11 @@ class UIntegerParameter : public UParameter, public TConsoleParameter<int32>
 
 public:
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	int32 DefaultValue;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter")
-	bool bRestrictRange;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
-	int32 MinValue = MIN_int32;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
-	int32 MaxValue = MAX_int32;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "1"))
+	FIntegerValidationSettings Validation;
 	
 	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, int32& OutValue, FString& ErrorMessage) const override;
 
@@ -148,41 +228,6 @@ public:
 	}
 };
 
-UENUM(BlueprintType)
-enum EStringValidationType
-{
-	None,
-	AllowedValueSet,
-	Regex
-};
-
-USTRUCT(BlueprintType)
-struct FStringValidationSettings
-{
-	GENERATED_BODY()
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter")
-	TEnumAsByte<EStringValidationType> ValidationType = None;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(
-		ToolTip = "If true, allowed values for this parameter will be returned by 'GetAllowedValues' method of the console command",
-		EditCondition = "ValidationType == EStringValidationType::AllowedValueSet",
-		EditConditionHides))
-	bool bProvideAllowedValuesDynamically;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(
-		EditCondition = "ValidationType == EStringValidationType::AllowedValueSet && !bProvideAllowedValuesDynamically",
-		EditConditionHides))
-	TSet<FString> AllowedValues;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(
-		EditCondition = "ValidationType == EStringValidationType::Regex",
-		EditConditionHides))
-	FString Regex;
-
-	bool Validate(const FString& Value, FString& OutError) const;
-};
-
 UCLASS(BlueprintType, EditInlineNew)
 class UStringParameter : public UParameter, public TConsoleParameter<FString>, public IAutoCompletionProvider
 {
@@ -193,7 +238,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	FString DefaultValue;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "1"))
 	FStringValidationSettings Validation;
 	
 	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FString& OutValue, FString& ErrorMessage) const override;
@@ -216,7 +261,7 @@ public:
 	virtual bool RequestAutocompletions_Implementation(const FString& String, TSet<FString>& AutoCompletions) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew)
+UCLASS(BlueprintType, EditInlineNew, AutoExpandCategories=("Parameter"))
 class UListParameter : public UParameter, public TConsoleParameter<TArray<FString>>, public IAutoCompletionProvider
 {
 	GENERATED_BODY()
@@ -225,7 +270,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	TArray<FString> DefaultValue;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Validation", meta=(
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
 		ToolTip = "Validation will be applied to each member of the list"))
 	FStringValidationSettings Validation;
 	
@@ -256,7 +301,7 @@ class UVectorParameter : public UParameter, public TConsoleParameter<FVector>
 	
 public:
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	FVector DefaultValue;
 	
 	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FVector& OutValue, FString& ErrorMessage) const override;
@@ -284,7 +329,7 @@ class UBoolParameter : public UParameter, public TConsoleParameter<bool>
 	
 public:
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	bool DefaultValue;
 	
 	virtual bool ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, bool& OutValue, FString& ErrorMessage) const override;
@@ -311,18 +356,12 @@ class URealParameter : public UParameter, public TConsoleParameter<double>
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "!bRequired", EditConditionHides, DisplayAfter = "bRequired"))
 	double DefaultValue;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter")
-	bool bRestrictRange;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
-	double MinValue = MIN_dbl;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parameter", meta=(EditCondition = "bRestrictRange"))
-	double MaxValue = MAX_dbl;
-
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(DisplayPriority = "1"))
+	FRealValidationSettings Validation;
+	
 	//~ Begin TConsoleParameter interface
 	virtual FName GetParamName() const override
 	{
