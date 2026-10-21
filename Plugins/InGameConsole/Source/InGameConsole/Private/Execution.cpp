@@ -23,7 +23,7 @@ void UCommandExecutor::HandleExecutionFinished(ULatentConsoleCommand* Command, b
 }
 
 bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& CommandClass, bool bForeground,
-	const APlayerController* Requester, const FCommandArguments& Args)
+                                       const APlayerController* Requester, const FCommandArguments& Args)
 {
 	if (CommandClass.Get() == ULatentConsoleCommand::StaticClass() && !CanExecuteLatentCommands())
 	{
@@ -90,6 +90,13 @@ bool UCommandExecutor::ExecuteInternal(const TSubclassOf<UConsoleCommandBase>& C
 
 		// listen to execution finish
 		Latent->OnExecutionFinished.BindUObject(
+			this,
+			&UCommandExecutor::HandleExecutionFinished,
+			Latent,
+			bForeground);
+
+		// listen to abortion
+		Latent->OnCommandAborted.BindUObject(
 			this,
 			&UCommandExecutor::HandleExecutionFinished,
 			Latent,

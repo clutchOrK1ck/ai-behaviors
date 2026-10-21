@@ -8,6 +8,16 @@
 #include "Commons.h"
 #include "ConsoleCommandBase.generated.h"
 
+/**
+ * the command execution context contains:
+ * - a player controller who requested this command execution
+ * - command arguments supplied for this command invocation
+ * - StdOut and StdErr where this command can write to
+ *
+ * note that StdOut and StdErr should be assigned by the command executor.
+ * A command would *usually* inherit some external StdOut/StdErr, for example those of the console,
+ * instead of writing to its own StdOut/StdErr
+ */
 struct FCommandExecutionContext
 {
 	const APlayerController* Caller;		// the player that requested command execution
@@ -16,20 +26,14 @@ struct FCommandExecutionContext
 	ITextPipe* StdErr;
 };
 
-UENUM(BlueprintType)
-enum class EReadUserInputResult : uint8
-{
-	Completed,
-	Aborted
-};
-
+/**
+ * a latent action waiting for user reply. finishes if AcceptUserInput is called
+ */
 class FLatentAwaitUserInputAction : public FPendingLatentAction
 {
 public:
-	FLatentAwaitUserInputAction(
-		EReadUserInputResult& ResultHandle,
-		FLatentActionInfo& Info) :
-		Result(ResultHandle),
+	FLatentAwaitUserInputAction(FString& OutUserInput, FLatentActionInfo& Info) :
+		OutUserInput(OutUserInput),
 		ExecutionFunction(Info.ExecutionFunction),
 		OutputLink(Info.Linkage),
 		CallbackTarget(Info.CallbackTarget)
@@ -38,24 +42,18 @@ public:
 	
 	void AcceptUserInput(const FString& Input)
 	{
-		Result = EReadUserInputResult::Completed;
-		bUserRepliedOrAborted = true;
-	}
-	
-	void Abort()
-	{
-		Result = EReadUserInputResult::Aborted;
-		bUserRepliedOrAborted = true;
+		OutUserInput = Input;
+		bUserReplied = true;
 	}
 
 	virtual void UpdateOperation(FLatentResponse& Response) override
 	{
-		Response.FinishAndTriggerIf(bUserRepliedOrAborted, ExecutionFunction, OutputLink, CallbackTarget);
+		Response.FinishAndTriggerIf(bUserReplied, ExecutionFunction, OutputLink, CallbackTarget);
 	}
 
 private:
-	EReadUserInputResult& Result;
-	bool bUserRepliedOrAborted = false;
+	FString OutUserInput;
+	bool bUserReplied = false;
 	FName ExecutionFunction;
 	int32 OutputLink;
 	FWeakObjectPtr CallbackTarget;
@@ -82,7 +80,7 @@ class INGAMECONSOLE_API UConsoleCommandBase : public UObject
 	GENERATED_BODY()
 
 protected:
-	int32 ExitCode; // command exit code, if it finished
+	int32 ExitCode = -1; // command exit code
 	FCommandExecutionContext CurrentExecutionContext;
 	
 public:
@@ -172,6 +170,7 @@ public:
 		CurrentExecutionContext.StdOut->Write(Message);
 	}
 
+	// persistent commands exist for the game instance's duration
 	bool IsPersistent() const
 	{
 		return LifecycleType == ECommandLifecycleType::Persistent;
@@ -180,7 +179,7 @@ public:
 	const UParameter* FindNamedParamByLongName(const FName& Name);
 	const UParameter* FindNamedParamByShortName(const FName& Name);
 	
-	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext, return -1;);
+	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext,);
 	
 	UFUNCTION(BlueprintImplementableEvent, meta=(
 		ToolTip = "Override this to provide parameter allowed values dynamically"))
@@ -202,6 +201,11 @@ public:
 	 * @return 
 	 */
 	bool CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const;
+
+	int32 GetExitCode() const
+	{
+		return ExitCode;
+	}
 };
 
 UCLASS(Blueprintable, meta=(ShowWorldContextPin,
@@ -211,8 +215,6 @@ class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 	GENERATED_BODY()
 
 	DECLARE_DELEGATE(FOnAbortCommand);
-	FOnAbortCommand OnCommandAborted;
-
 	DECLARE_DELEGATE(FOnExecutionFinished);
 
 	/**
@@ -221,10 +223,10 @@ class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 	UPROPERTY()
 	TObjectPtr<USimpleTextPipe> UserInput;
 	
-	// if user needs to supply input for this command to resume
+	// if user needs to supply input for this command to resume, this is set to true by calling 'RequireUserInput'
 	bool bIsWaitingForUserInput;
 
-	bool bHasFinished; // whether this command has finished execution
+	bool bIsExecuting; // whether this command is currently executing
 	
 protected:
 	/**
@@ -238,22 +240,18 @@ protected:
 
 public:
 	FOnExecutionFinished OnExecutionFinished;
-
+	FOnAbortCommand OnCommandAborted;
+	
 	ULatentConsoleCommand()
 	{
 		UserInput = CreateDefaultSubobject<USimpleTextPipe>(FName(TEXT("UserInput")));
 	}
 	
-	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) override
-	{
-		CurrentExecutionContext = Context;
-		ExecuteImpl();
-		return 0; // TODO
-	}
+	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) override;
 
 	// pause execution, print the prompt to stdout and wait for the user answer
-	UFUNCTION(BlueprintCallable, meta=(Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", ExpandEnumAsExecs = "Result"))
-	void RequireUserInput(const UObject* WorldContextObject, const FString& Prompt, FLatentActionInfo LatentInfo, FString& OutUserInput, EReadUserInputResult& Result);
+	UFUNCTION(BlueprintCallable, meta=(Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject"))
+	void RequireUserInput(const UObject* WorldContextObject, const FString& Prompt, FLatentActionInfo LatentInfo, FString& OutUserInput);
 
 	UFUNCTION(BlueprintCallable)
 	void Finish(const int32 InExitCode);
@@ -262,40 +260,28 @@ public:
 	 * try to push user input, this will do nothing if the command is not waiting for user input
 	 * @param Input 
 	 */
-	bool PushUserInput(const FString& Input)
-	{
-		if (bIsWaitingForUserInput)
-		{
-			UserInput->Write(Input);
-			return true;
-		}
-
-		return false;
-	}
+	bool PushUserInput(const FString& Input);
 
 	/**
-	 * aborts execution of this command (for latent commands)
+	 * stops command execution violently
 	 */
-	void Abort()
-	{
-		bIsWaitingForUserInput = false;
-		OnCommandAborted.ExecuteIfBound();
-		UserInput->OnNewItem.Clear();
-		// TODO other. do we need to clear state or even destroy? it largely depends on whether commands should be instantiated or kept alive indefinitely and periodically clean their state
-	}
+	void Abort();
 
 	bool IsCurrentlyExecuting() const
 	{
-		return !bHasFinished;
+		return bIsExecuting;
 	}
 
 	bool HasFinishedExecution() const
 	{
-		return bHasFinished;
+		return !bIsExecuting;
 	}
 	
 	// whether this console command is currently waiting for user input
-	bool IsWaitingForUserInput() const;
+	bool IsWaitingForUserInput() const
+	{
+		return bIsWaitingForUserInput;
+	}
 };
 
 UCLASS(Blueprintable, meta=(ShowWorldContextPin,
@@ -306,15 +292,15 @@ class INGAMECONSOLE_API UConsoleCommand : public UConsoleCommandBase
 
 protected:
 
-	UFUNCTION(BlueprintImplementableEvent, meta=(ForceAsFunction))
-	void ExecuteImpl();
+	UFUNCTION(BlueprintImplementableEvent, meta=(ForceAsFunction,
+		ToolTip = "Command execution logic. Should return an integer program return code"))
+	int32 ExecuteImpl();
 
 public:
-	virtual int32 ExecuteWithContext(const FCommandExecutionContext& Context) override
+	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) override
 	{
 		CurrentExecutionContext = Context;
-		ExecuteImpl();
-		return 0; // TODO
+		ExitCode = ExecuteImpl();
 	}
 };
 
