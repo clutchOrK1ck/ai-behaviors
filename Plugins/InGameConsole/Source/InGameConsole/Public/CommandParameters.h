@@ -419,7 +419,7 @@ bool InitArgumentValue(const TConsoleParameter<T>* ParamSpec,  const FString* Va
 			return false;
 		}
 
-		OutArgs.Add(ParamSpec->GetDefaultValue());
+		OutArgs.Add(ParamSpec->GetParamName(), ParamSpec->GetDefaultValue());
 		return true;
 	}
 
@@ -429,7 +429,7 @@ bool InitArgumentValue(const TConsoleParameter<T>* ParamSpec,  const FString* Va
 		return false;
 	}
 
-	OutArgs.Add(ParsedValue);
+	OutArgs.Add(ParamSpec->GetParamName(), ParsedValue);
 	return true;
 }
 
@@ -437,27 +437,32 @@ inline bool InitArgumentValue(const UParameter* ParamSpec, const FString* Value,
 {
 	if (const auto* IntParam = Cast<UIntegerParameter>(ParamSpec))
 	{
-		return InitArgumentValue(IntParam, Value, OutArgs, Command, OutError);
+		return InitArgumentValue<int32>(IntParam, Value, OutArgs, Command, OutError);
 	}
 
 	if (const auto* BoolParam = Cast<UBoolParameter>(ParamSpec))
 	{
-		return InitArgumentValue(BoolParam, Value, OutArgs, Command, OutError);
+		return InitArgumentValue<bool>(BoolParam, Value, OutArgs, Command, OutError);
 	}
 
 	if (const auto* StringParam = Cast<UStringParameter>(ParamSpec))
 	{
-		return InitArgumentValue(StringParam, Value, OutArgs, Command, OutError);
+		return InitArgumentValue<FString>(StringParam, Value, OutArgs, Command, OutError);
 	}
 
 	if (const auto* ListParam = Cast<UListParameter>(ParamSpec))
 	{
-		return InitArgumentValue(ListParam, Value, OutArgs, Command, OutError);
+		return InitArgumentValue<TArray<FString>>(ListParam, Value, OutArgs, Command, OutError);
 	}
 
 	if (const auto* VectorParam = Cast<UVectorParameter>(ParamSpec))
 	{
-		return InitArgumentValue(VectorParam, Value, OutArgs, Command, OutError);
+		return InitArgumentValue<FVector>(VectorParam, Value, OutArgs, Command, OutError);
+	}
+
+	if (const auto* RealParam = Cast<URealParameter>(ParamSpec))
+	{
+		return InitArgumentValue<double>(RealParam, Value, OutArgs, Command, OutError);
 	}
 
 	return false;

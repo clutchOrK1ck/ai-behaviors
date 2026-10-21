@@ -53,6 +53,10 @@ void UGameConsole::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	// create the executor
+	CommandExecutor = NewObject<UGameConsoleCommandExecutor>(this, UGameConsoleCommandExecutor::StaticClass());
+	CommandExecutor->Initialize(this);
+	
 	InitializeInputComponent();
 	InitializeWidget();
 }
@@ -137,10 +141,10 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			return;
 		}
 		
-		RemoteExecutionComponent->ExecuteCommandOnServer(CommandTemplate->StaticClass(), Args);
+		RemoteExecutionComponent->ExecuteCommandOnServer(CommandTemplate->GetClass(), Args);
 	} else
 	{
-		CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->StaticClass(), Args);
+		CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->GetClass(), Args);
 	}
 
 	ExecutionHistory.Add(Command);
@@ -239,7 +243,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	// see if there's a foreground command waiting for user input - in this case we delegate auto-completion to the command
 	if (const ULatentConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
 	{
-		if (ForegroundCommand->IsWaitingForUserInput() && ForegroundCommand->StaticClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
+		if (ForegroundCommand->IsWaitingForUserInput() && ForegroundCommand->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 		{
 			return Execute_RequestAutocompletions(ForegroundCommand, InString, AutoCompletions);
 		}
@@ -300,7 +304,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 		}
 	}
 
-	if (AutoCompleteParam && AutoCompleteParam->StaticClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
+	if (AutoCompleteParam && AutoCompleteParam->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 	{
 		return Execute_RequestAutocompletions(AutoCompleteParam, InString, AutoCompletions);
 	}
