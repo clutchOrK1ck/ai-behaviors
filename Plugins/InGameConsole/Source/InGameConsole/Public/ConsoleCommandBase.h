@@ -208,6 +208,13 @@ public:
 	}
 };
 
+UENUM(BlueprintType)
+enum class EOnLatentCommandExecutionEndingReason : uint8
+{
+	ExecutionFinished,
+	ExecutionAborted
+};
+
 UCLASS(Blueprintable, meta=(ShowWorldContextPin,
 	ToolTip = "A latent console command can execute over multiple frames and must exist finish execution with its 'Finish' method"))
 class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
@@ -255,6 +262,10 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void Finish(const int32 InExitCode);
+	
+	UFUNCTION(BlueprintImplementableEvent, meta=(
+		ToolTip = "This is the place to perform clean-up of any nature when the command has finished or been aborted"))
+	void OnExecutionEnding(EOnLatentCommandExecutionEndingReason Reason);
 	
 	/**
 	 * try to push user input, this will do nothing if the command is not waiting for user input

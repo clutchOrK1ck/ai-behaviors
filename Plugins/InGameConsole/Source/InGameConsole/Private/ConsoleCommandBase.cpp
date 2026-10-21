@@ -52,6 +52,9 @@ void ULatentConsoleCommand::Finish(const int32 InExitCode)
 		UE_LOG(LogTemp, Error, TEXT("Called finished execution on the latent command but the command is not executing"));
 		return;
 	}
+
+	// let the blueprint handle execution finish
+	OnExecutionEnding(EOnLatentCommandExecutionEndingReason::ExecutionFinished);
 	
 	bIsExecuting = false;
 	this->ExitCode = InExitCode;
@@ -78,17 +81,14 @@ void ULatentConsoleCommand::Abort()
 		UE_LOG(LogTemp, Error, TEXT("Called 'Abort' on a latent command but the command is not executing"));
 		return;
 	}
-	
-	// TODO abortion logic?
-	if (!IsPersistent())
+
+	// let the blueprint handle abortion
+	OnExecutionEnding(EOnLatentCommandExecutionEndingReason::ExecutionAborted);
+
+	// if command isn't persistent, its uobject is destroyed, effectively handling the clean-up
+	if (IsPersistent())
 	{
-		// if command isn't persistent, it is sufficient to simply destroy the uobject (executor takes care) and unreal should take care of existing references
-		OnCommandAborted.ExecuteIfBound();
-	} else
-	{
-		// we should stop command execution but not destroy the command object
-		
-		// command could have latent actions registered with the world manager, we can try to kill them
+		// clean up latent actions for this command
 		if (CurrentExecutionContext.Caller)
 		{
 			if (UWorld* World = CurrentExecutionContext.Caller->GetWorld())
@@ -96,13 +96,9 @@ void ULatentConsoleCommand::Abort()
 				World->GetLatentActionManager().RemoveActionsForObject(this);
 			}
 		}
-
-		// the command could have subscribed to external actor/object events - for example, it can access a world actor and call 'Finish' on actor's take damage
-		// TODO how do clear this type of references???
-
-		// after all of the necessary cleanup - call command aborted
-		OnCommandAborted.ExecuteIfBound();
 	}
+
+	OnCommandAborted.ExecuteIfBound();
 }
 
 const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name)
