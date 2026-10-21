@@ -61,6 +61,12 @@ URemoteExecutionComponent::URemoteExecutionComponent()
 
 bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommandBase* Command) const
 {
+	// no execution of latent commands
+	if (Command->IsA<ULatentConsoleCommand>())
+	{
+		return false;
+	}
+	
 	for (const FExecutionAuthority& Auth : ExecutionAuthorityList)
 	{
 		switch(Auth.Type)
@@ -72,11 +78,13 @@ bool URemoteExecutionComponent::IsPlayerAllowedToExecute(const UConsoleCommandBa
 			{
 				return true;
 			}
+			break;
 		case EExecutionAuthorityType::SingleCommand:
 			if (Command->CommandName.ToString().Equals(Auth.Key))
 			{
 				return true;
 			}
+			break;
 		default:
 			return false;
 		}
@@ -99,16 +107,27 @@ void URemoteExecutionComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 		COND_OwnerOnly);
 }
 
-void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(TSubclassOf<UConsoleCommandBase> CommandClass,
-                                                                      const FCommandArguments& Args)
+void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(const FString& Command)
 {
-	// server-side control for malicious execution attempts
-	if (!IsPlayerAllowedToExecute(CommandClass.GetDefaultObject()))
+	// parse command on server using server's console
+	UConsoleCommandBase* CommandTemplate;
+	FCommandArguments Args;
+	FString ParsingError;
+
+	if (!GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>()->ParseCommand(Command, CommandTemplate, Args, ParsingError))
 	{
+		StdErr->Write(ParsingError); // this will propagate over network if the altered client bypassed parsing
+		return;
+	}
+	
+	// server-side control for malicious execution attempts
+	if (!IsPlayerAllowedToExecute(CommandTemplate))
+	{
+		StdErr->Write(FString::Format(TEXT("This client is not allowed to execute '{0}'"), {CommandTemplate->CommandName.ToString()}));
 		return;
 	}
 
-	RemoteCommandExecutor->ExecuteInForeground(GetOwningController(), CommandClass, Args);
+	RemoteCommandExecutor->ExecuteInForeground(GetOwningController(), CommandTemplate->GetClass(), Args);
 }
 
 void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(EExecutionAuthorityType Type,

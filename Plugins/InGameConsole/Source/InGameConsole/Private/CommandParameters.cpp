@@ -4,14 +4,6 @@
 #include "CommandParameters.h"
 #include "ConsoleCommandBase.h"
 
-bool FCommandArguments::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
-{
-	Ar << Args;
-	Ar << Flags;
-
-	bOutSuccess = !Ar.IsError();
-	return true;
-}
 
 bool FIntegerValidationSettings::Validate(const int32 Value, FString& OutError) const
 {

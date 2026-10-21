@@ -102,26 +102,13 @@ void UGameConsole::InitializeWidget()
 
 void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, const FString& Command)
 {
-	FString ErrorMsg;
-		
-	if (!Tokenizer.Parse(Command))
-	{
-		StdErr->Write(FString::Format(TEXT("Failed to tokenize the command with error: {0}"), {Tokenizer.GetError()->GetErrorMessage()}));
-		return;
-	}
-
-	const auto CommandTemplate = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
-	if (!CommandTemplate)
-	{
-		StdErr->Write("Command bla bla does not exist"); // TODO
-		return;
-	}
-
+	FString ParsingError;
 	FCommandArguments Args;
+	UConsoleCommandBase* CommandTemplate;
 
-	if (!Parser.ParseArguments(Tokenizer.GetTokens(), CommandTemplate, Args, ErrorMsg))
+	if (!ParseCommand(Command, CommandTemplate, Args, ParsingError))
 	{
-		StdErr->Write("Bla bla syntax error"); // TODO
+		StdErr->Write(ParsingError); // TODO deal with error accumulation and propagation
 		return;
 	}
 
@@ -149,7 +136,7 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			return;
 		}
 		
-		RemoteExecutionComponent->ExecuteCommandOnServer(CommandTemplate->GetClass(), Args);
+		RemoteExecutionComponent->ExecuteCommandOnServer(Command);
 	} else
 	{
 		CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->GetClass(), Args);
@@ -253,6 +240,33 @@ void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool b
 			OutCommandNames.Add(CommandCls.GetDefaultObject()->CommandName.ToString());
 		}
 	}
+}
+
+bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& CommandTemplate, FCommandArguments& OutArgs,
+	FString& OutErrorMessage)
+{
+	if (!Tokenizer.Parse(Command))
+	{
+		OutErrorMessage = FString::Format(TEXT("Failed to tokenize the command with error: {0}"), {Tokenizer.GetError()->GetErrorMessage()});
+		return false;
+	}
+
+	const auto ExistingCommand = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
+	if (!ExistingCommand)
+	{
+		OutErrorMessage = "Command bla bla does not exist"; // TODO
+		return false;
+	}
+
+	CommandTemplate = ExistingCommand;
+
+	if (!Parser.ParseArguments(Tokenizer.GetTokens(), ExistingCommand, OutArgs, OutErrorMessage))
+	{
+		OutErrorMessage = "Bla bla syntax error"; // TODO
+		return false;
+	}
+
+	return true;
 }
 
 bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const

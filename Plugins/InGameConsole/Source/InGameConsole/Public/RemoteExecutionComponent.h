@@ -88,7 +88,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	UFUNCTION(Server, Reliable)
-	void ExecuteCommandOnServer(TSubclassOf<UConsoleCommandBase> CommandClass, const FCommandArguments& Args);
+	void ExecuteCommandOnServer(const FString& Command);
 
 	UFUNCTION(Client, Reliable)
 	void ReceiveCommandFeedbackOnClient(const FString& Message, bool bIsStdErr);

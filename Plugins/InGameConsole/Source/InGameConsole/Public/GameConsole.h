@@ -154,6 +154,8 @@ public:
 		return StdErr;
 	}
 
+	bool ParseCommand(const FString& Command, UConsoleCommandBase*& CommandTemplate, FCommandArguments& OutArgs, FString& OutErrorMessage);
+
 	/**
 	 * returns autocompletions for a piece of text.
 	 * 
