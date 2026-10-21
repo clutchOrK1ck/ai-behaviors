@@ -28,13 +28,12 @@ bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCom
                                 FCommandArguments& OutArgs, FString& OutError)
 {
 	// -- positional parameters --
-	// 1 because the first token is the command name
-	for (int PositionalParamIdx = 1; PositionalParamIdx < Command->PositionalParameters.Num(); PositionalParamIdx++)
+	for (int PositionalParamIdx = 0; PositionalParamIdx < Command->PositionalParameters.Num(); PositionalParamIdx++)
 	{
 		const FString* SuppliedValuePtr = nullptr;
-		if (Tokens.IsValidIndex(PositionalParamIdx))
+		if (Tokens.IsValidIndex(PositionalParamIdx + 1)) // we have the command name at idx = 0
 		{
-			SuppliedValuePtr = &Tokens[PositionalParamIdx];
+			SuppliedValuePtr = &Tokens[PositionalParamIdx + 1];
 		}
 
 		const auto ParameterSpec = Command->PositionalParameters[PositionalParamIdx];
@@ -54,7 +53,7 @@ bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCom
 		});
 
 		// if failed, try to find by short name
-		if (TokenIdx < 0)
+		if (TokenIdx <= 0)
 		{
 			TokenIdx = Tokens.IndexOfByPredicate([ParamSpec](const FString& Token)
 			{
@@ -71,6 +70,8 @@ bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCom
 			{
 				return false;
 			}
+
+			continue;
 		}
 
 		// supplied the name - supply the value

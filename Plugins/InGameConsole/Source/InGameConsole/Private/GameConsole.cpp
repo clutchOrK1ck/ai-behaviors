@@ -256,11 +256,11 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	// try to parse the command to understand what exactly the user is trying to auto-complete
 	if(!Tokenizer_.Parse(InString))
 	{
-		UE_LOG(LogTemp, Error, TEXT("Tokenizer error while trying to get a list of auto-completions: %s"), *Tokenizer.GetError()->GetErrorMessage());
+		UE_LOG(LogTemp, Error, TEXT("Tokenizer error while trying to get a list of auto-completions: %s"), *Tokenizer_.GetError()->GetErrorMessage());
 		return false;
 	}
 
-	const TArray<FString>& Tokens = Tokenizer.GetTokens();
+	const TArray<FString>& Tokens = Tokenizer_.GetTokens();
 	
 	// they are trying to auto-complete the command itself
 	if (Tokens.Num() == 1)
@@ -272,7 +272,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	}
 
 	// the user is trying to auto-complete parameter name or parameter value - in this case though we first need to know which command
-	UConsoleCommandBase* Command = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
+	UConsoleCommandBase* Command = FindCommandTemplate(FName(Tokenizer_.GetTokens()[0]));
 
 	if (!Command)
 	{
@@ -282,15 +282,15 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	// parameter to auto-complete value of, if user is trying to auto-complete a parameter value
 	const UParameter* AutoCompleteParam = nullptr;
 
-	if (const bool bIsTryingToAutocompletePositionalParam = Tokenizer.GetTokens().Num() <= Command->PositionalParameters.Num() + 1) // positional param auto-completion?
+	if (const bool bIsTryingToAutocompletePositionalParam = Tokenizer_.GetTokens().Num() <= Command->PositionalParameters.Num() + 1)
 	{
-		AutoCompleteParam = Command->PositionalParameters[Tokenizer.GetTokens().Num() - 2];
+		AutoCompleteParam = Command->PositionalParameters[Tokenizer_.GetTokens().Num() - 2];
 	} else
 	{
 		// we are trying to auto-complete a named param if the preceding token is the long or the short name of an existing parameter
-		FString PrecedingToken = Tokenizer.GetTokens()[Tokenizer.GetTokens().Num() - 2];
+		FString PrecedingToken = Tokenizer_.GetTokens()[Tokenizer_.GetTokens().Num() - 2];
 
-		if (Tokenizer.GetTokens().Num() > Command->PositionalParameters.Num() + 1)
+		if (Tokenizer_.GetTokens().Num() > Command->PositionalParameters.Num() + 1)
 		{
 			if (PrecedingToken.StartsWith("--")
 			&& Command->FindNamedParamByLongName(FName(PrecedingToken.TrimChar('-').TrimChar('-'))))
