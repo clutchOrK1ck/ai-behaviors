@@ -40,7 +40,7 @@ struct FExecutionAuthorityRequest
 	GENERATED_BODY()
 	
 	UPROPERTY(BlueprintReadOnly)
-	const APlayerController* Requester;
+	TWeakObjectPtr<const APlayerController> Requester;
 
 	UPROPERTY(BlueprintReadOnly)
 	EExecutionAuthorityType Type;

@@ -50,6 +50,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	/**
 	 * the widget class for the console widget to create
 	 */
+	UPROPERTY()
 	TSubclassOf<UConsoleWidget> WidgetClass;
 	
 	/**
@@ -59,6 +60,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UConsoleWidget* Widget = nullptr;
 
 	// a set of all commands known to this console
+	UPROPERTY()
 	TSet<TSubclassOf<UConsoleCommandBase>> Commands;
 
 	// history of executed commands

@@ -201,13 +201,18 @@ void URemoteExecutionSubsystem::ProcessOldestRequest(EProcessRequestAction Actio
 
 	FExecutionAuthorityRequest Request;
 	PendingRequests.Dequeue(Request);
+
+	if (!Request.Requester.IsValid())
+	{
+		return;
+	}
 	
 	if (Action == EProcessRequestAction::Deny)
 	{
 		return;
 	}
 
-	GrantAuthority(Request.Requester, Request.Type, Request.Key);
+	GrantAuthority(Request.Requester.Get(), Request.Type, Request.Key);
 }
 
 void URemoteExecutionSubsystem::PurgeAllRequests()

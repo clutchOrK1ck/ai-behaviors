@@ -254,9 +254,11 @@ FString FParserBase::DoReadQuotedString(bool SkipPrecedingBlanks,
 			// move cursor past the closing quote
 			ReadNextUnchecked();
 			return QuotedString;
+		} else
+		{
+			QuotedString += ReadNextUnchecked();
 		}
-
-		QuotedString += ReadNextUnchecked();
+		
 		Next = Peak(false);
 	}
 
