@@ -289,7 +289,7 @@ bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& Co
 	const auto ExistingCommand = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
 	if (!ExistingCommand)
 	{
-		OutErrorMessage = "Command bla bla does not exist"; // TODO
+		OutErrorMessage = FString::Format(TEXT("Command with name {0} does not exist"), {Tokenizer.GetTokens()[0]});
 		return false;
 	}
 
@@ -297,7 +297,6 @@ bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& Co
 
 	if (!Parser.ParseArguments(Tokenizer.GetTokens(), ExistingCommand, OutArgs, OutErrorMessage))
 	{
-		OutErrorMessage = "Bla bla syntax error"; // TODO
 		return false;
 	}
 

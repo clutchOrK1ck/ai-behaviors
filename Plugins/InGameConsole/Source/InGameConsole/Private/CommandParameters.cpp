@@ -98,7 +98,7 @@ bool FStringValidationSettings::Validate(const FString& Value, FString& OutError
 bool UStringParameter::ParseAndValidate(const FString& Value, const UConsoleCommandBase* Command, FString& OutValue,
                                         FString& ErrorMessage) const
 {
-	if (Validation.bProvideAllowedValuesDynamically)
+	if (Validation.bProvideAllowedValuesDynamically && Validation.ValidationType == AllowedValueSet)
 	{
 		if (!Command->CheckParamValueIsInAllowedSet(Name, Value))
 		{
@@ -156,7 +156,7 @@ bool UListParameter::ParseAndValidate(const FString& Value, const UConsoleComman
 	
 	for (const FString& Member : Members)
 	{
-		if (Validation.bProvideAllowedValuesDynamically)
+		if (Validation.bProvideAllowedValuesDynamically && Validation.ValidationType == AllowedValueSet)
 		{
 			if (!Command->CheckParamValueIsInAllowedSet(Name, Member))
 			{
@@ -182,7 +182,7 @@ bool UVectorParameter::ParseAndValidate(const FString& Value, const UConsoleComm
 
 	// try to parse exactly three numeric values
 	TArray<FString> Parts;
-	Value.ParseIntoArray(Parts, TEXT(" "), true);
+	Val.ParseIntoArray(Parts, TEXT(" "), true);
 
 	if (Parts.Num() != 3)
 	{
