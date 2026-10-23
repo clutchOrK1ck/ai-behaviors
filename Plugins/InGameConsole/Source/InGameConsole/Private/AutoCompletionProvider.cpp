@@ -14,7 +14,7 @@ bool UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(const FString& InToAu
 			AutoCompletions.Add("");
 		} else if (Option.Len() > InToAutocomplete.Len() && Option.Mid(0, InToAutocomplete.Len()).Equals(InToAutocomplete))
 		{
-			AutoCompletions.Add(Option.Mid(InToAutocomplete.Len() - 1));
+			AutoCompletions.Add(Option.Mid(InToAutocomplete.Len()));
 		}
 	}
 

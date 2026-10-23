@@ -9,6 +9,7 @@
 #include "Parser.h"
 #include "Execution.h"
 #include "InputCoreTypes.h"
+#include "Net/OnlineEngineInterface.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameConsole.generated.h"
 
@@ -21,6 +22,74 @@ public:
 	UPROPERTY(EditAnywhere, Config)
 	FKey ToggleKey;
 };
+
+//~ autocompletion
+enum EAutocompletionRequestType
+{
+	Invalid,
+	CommandName,
+	ParameterName,
+	ParameterValue
+};
+
+struct FAutocompletionRequest
+{
+	EAutocompletionRequestType GetType() const
+	{
+		return Type;
+	}
+
+	FString GetValue() const
+	{
+		return Value;
+	}
+
+	bool IsValid() const
+	{
+		return Type != Invalid;
+	}
+
+	const UParameter* GetParameter() const
+	{
+		return AutocompleteParameter;
+	}
+
+	const UConsoleCommandBase* GetCommand() const
+	{
+		return Command;
+	}
+
+	static FAutocompletionRequest CommandName(const FString& Value)
+	{
+		return FAutocompletionRequest(EAutocompletionRequestType::CommandName, Value, nullptr, nullptr);
+	}
+
+	static FAutocompletionRequest ParamName(const FString& Value, const UConsoleCommandBase* Command)
+	{
+		return FAutocompletionRequest(ParameterName, Value, Command, nullptr);
+	}
+
+	static FAutocompletionRequest ParamValue(const FString& Value, const UConsoleCommandBase* Command, const UParameter* Param)
+	{
+		return FAutocompletionRequest(ParameterValue, Value, Command, Param);
+	}
+
+	static const FAutocompletionRequest INVALID;
+	
+private:
+	FAutocompletionRequest(EAutocompletionRequestType Type,
+	                       const FString& InValue, const UConsoleCommandBase* Command, const UParameter* Parameter) :
+		Type(Type), Value(InValue), AutocompleteParameter(Parameter), Command(Command)
+	{
+	}
+	
+	EAutocompletionRequestType Type;
+	FString Value;
+	const UParameter* AutocompleteParameter;
+	const UConsoleCommandBase* Command;
+};
+
+//
 
 /**
  * game console is represented by a game instance subsystem to ensure the following:
@@ -177,6 +246,8 @@ public:
 
 	bool ParseCommand(const FString& Command, UConsoleCommandBase*& CommandTemplate, FCommandArguments& OutArgs, FString& OutErrorMessage);
 
+	FAutocompletionRequest ResolveAutocompletionRequest(const FString& AutocompletionString) const;
+	
 	/**
 	 * returns autocompletions for a piece of text.
 	 * 

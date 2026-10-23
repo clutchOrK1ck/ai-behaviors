@@ -24,6 +24,55 @@ void FTokenizer::ParseImpl()
 	}
 }
 
+void FAutocompletionTokenizer::ParseImpl()
+{
+	Tokens.Empty();
+
+	// as with the normal identifier, a command name or a piece of it is expected at the start
+	Tokens.Add(DoReadIdentifier());
+
+	while (Peak() != '\0')
+	{
+		if (Peak() == '"')
+		{
+			const uint32 PositionBeforeReadQuotedString = GetCursor();
+
+			try
+			{
+				Tokens.Add(DoReadQuotedString());
+			} catch (FEOL EndOfLine)
+			{
+				Jump(PositionBeforeReadQuotedString);
+				DoReadChar('"');
+
+				Tokens.Add(ReadRemaining().Replace(TEXT("\\\""), TEXT("\"")));
+				return;
+			}
+		} else if (Peak() == '[')
+		{
+			const uint32 PositionBeforeReadGroup = GetCursor();
+
+			try
+			{
+				Tokens.Add(
+					DoReadEnclosedGroup('[', ']')
+					.TrimChar('[')
+					.TrimChar(']')
+					.TrimStartAndEnd());
+			} catch (FEOL EndOfLine)
+			{
+				Jump(PositionBeforeReadGroup);
+				DoReadChar('[');
+				Tokens.Add(ReadRemaining());
+				return;
+			}
+		} else
+		{
+			Tokens.Add(DoReadNonBlank());
+		}
+	}
+}
+
 const UParameter* FCLIParser::TryFindParameterForToken(const FString& Token, const UConsoleCommandBase* Command) const
 {
 	if (DoesLookLikeLongArgName(Token))

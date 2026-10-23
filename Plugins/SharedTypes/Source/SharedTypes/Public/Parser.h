@@ -53,6 +53,23 @@ class SHAREDTYPES_API FParserBase
 	void Reset(const FString& NewString);
 	
 protected:
+	// returns the position where next read will happen
+	uint32 GetCursor() const
+	{
+		return Cursor;
+	}
+
+	bool Jump(uint32 InCursor)
+	{
+		if (!ParsedString.IsValidIndex(InCursor))
+		{
+			return false;
+		}
+
+		Cursor = InCursor;
+		return true;
+	}
+	
 	/**
 	 * whether the next read will result in EOL
 	 * @return
@@ -170,6 +187,12 @@ protected:
 	 */
 	FString DoReadQuotedString(bool SkipPrecedingBlanks = true, const TCHAR& QuoteChar = '"', const TCHAR& EscapeChar = '\\');
 
+	/**
+	 * 
+	 * @return remaining characters, if any
+	 */
+	FString ReadRemaining() const;
+	
 	/**
 	 * actual parsing implementation, you are allowed to throw in this method
 	 */

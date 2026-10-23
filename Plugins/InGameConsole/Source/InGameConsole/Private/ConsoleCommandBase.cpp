@@ -178,6 +178,24 @@ bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FSt
 	return true;
 }
 
+void UConsoleCommandBase::GetParameterAndFlagNames(TArray<FName>& Names) const
+{
+	for (const auto Param : NamedParameters)
+	{
+		Names.Add(Param->Name);
+	}
+
+	for (const auto Param : PositionalParameters)
+	{
+		Names.Add(Param->Name);
+	}
+
+	for (const auto Flag : Flags)
+	{
+		Names.Add(Flag.Name);
+	}
+}
+
 bool UConsoleCommandBase::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const
 {
 	TSet<FString> AllowedValues;

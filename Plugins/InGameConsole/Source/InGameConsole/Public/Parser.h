@@ -5,9 +5,8 @@
 
 class FTokenizer : public FParserBase
 {
-	TArray<FString> Tokens; // this console command parsed into an array of tokens
-
 protected:
+	TArray<FString> Tokens; // this console command parsed into an array of tokens
 	virtual void ParseImpl() override;
 
 public:
@@ -15,6 +14,62 @@ public:
 	{
 		return Tokens;
 	}
+};
+
+/**
+ * a tokenizer to use with autocompletion, allows for unclosed groups and double-quotes
+ */
+class FAutocompletionTokenizer : public FTokenizer
+{
+protected:
+	virtual void ParseImpl() override;
+};
+
+/**
+ * this is a utility class for parameter names or flags supplied in the command line (-- and -)
+ */
+struct FCLIName
+{
+	FCLIName() : Name(NAME_None), bIsAlias(false) {}
+	
+	static bool Parse(const FString& Token, FCLIName& OutName)
+	{
+		
+		if (Token.StartsWith(TEXT("--")) && Token.Len() > 2)
+		{
+			OutName = FCLIName(FName(Token.TrimChar('-').TrimChar('-')), false);
+			return true;
+		}
+
+		if (Token.StartsWith(TEXT("-")) && Token.Len() > 1)
+		{
+			OutName = FCLIName(FName(Token.TrimChar('-')), true);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool IsAlias() const
+	{
+		return bIsAlias;
+	}
+
+	const FName& GetName() const
+	{
+		return Name;
+	}
+
+	bool IsNone() const
+	{
+		return Name.IsNone();
+	}
+	
+private:
+	FName Name;
+	bool bIsAlias;
+
+	FCLIName(const FName& Name, bool bIsAlias) : Name(Name), bIsAlias(bIsAlias) {}
 };
 
 class FCLIParser

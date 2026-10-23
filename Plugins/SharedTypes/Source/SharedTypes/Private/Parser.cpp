@@ -264,3 +264,13 @@ FString FParserBase::DoReadQuotedString(bool SkipPrecedingBlanks,
 
 	throw FEOL();
 }
+
+FString FParserBase::ReadRemaining() const
+{
+	if (IsEOL())
+	{
+		return "";
+	}
+
+	return ParsedString.Mid(Cursor);
+}

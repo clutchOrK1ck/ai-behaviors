@@ -188,7 +188,9 @@ public:
 	 * @param OutError 
 	 * @return 
 	 */
-	bool ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const;;
+	bool ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const;
+	
+	void GetParameterAndFlagNames(TArray<FName>& Names) const;
 	
 	UFUNCTION(BlueprintImplementableEvent, meta=(
 		ToolTip = "Override this to provide parameter allowed values dynamically"))

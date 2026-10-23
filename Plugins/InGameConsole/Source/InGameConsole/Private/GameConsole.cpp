@@ -5,6 +5,8 @@
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
+const FAutocompletionRequest FAutocompletionRequest::INVALID = FAutocompletionRequest(Invalid, "", nullptr, nullptr);
+
 void UCommandExecutionWorldSubsystem::Deinitialize()
 {
 	Super::Deinitialize();
@@ -303,6 +305,77 @@ bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& Co
 	return true;
 }
 
+FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString& AutocompletionString) const
+{
+	FAutocompletionTokenizer Tokenizer_;
+	
+	// try to parse the command to understand what exactly the user is trying to auto-complete
+	if(!Tokenizer_.Parse(AutocompletionString))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Tokenizer error while trying to get a list of auto-completions: %s"), *Tokenizer_.GetError()->GetErrorMessage());
+		return FAutocompletionRequest::INVALID;
+	}
+
+	auto Tokens = MakeArrayView(Tokenizer_.GetTokens());
+	
+	// they are trying to auto-complete the command itself
+	if (Tokens.Num() == 1)
+	{
+		return FAutocompletionRequest::CommandName(Tokens[0]);
+	}
+
+	// chop off the command name for simplicity
+	const FName CommandName = FName(Tokens[0]);
+	Tokens = Tokens.RightChop(1);
+
+	// the user is trying to auto-complete parameter name or parameter value - in this case though we first need to know which command
+	UConsoleCommandBase* Command = FindCommandTemplate(CommandName);
+
+	if (!Command)
+	{
+		return FAutocompletionRequest::INVALID;
+	}
+	
+	const FString TokenForAutocompletion = Tokens.Last();
+	const int32 AutocompletionTokenIdx = Tokens.Num() - 1;
+
+	if (Command->PositionalParameters.IsValidIndex(AutocompletionTokenIdx)) // trying to autocomplete a positional param
+	{
+		return FAutocompletionRequest::ParamValue(TokenForAutocompletion, Command, Command->PositionalParameters[AutocompletionTokenIdx]);
+	}
+
+	// consume positional parameters for convenience
+	Tokens = Tokens.RightChop(Command->PositionalParameters.Num());
+	
+	// check first if we are trying to auto-complete a value of valid named parameter (preceding token is a valid parameter name)
+	FCLIName ParamOrFlagName;
+	if (Tokens.Num() > 1 && FCLIName::Parse(Tokens[Tokens.Num() - 2], ParamOrFlagName))
+	{
+		const UParameter* AutocompleteParameter;
+
+		if (ParamOrFlagName.IsAlias())
+		{
+			AutocompleteParameter = Command->FindNamedParamByShortName(ParamOrFlagName.GetName());
+		} else
+		{
+			AutocompleteParameter = Command->FindNamedParamByLongName(ParamOrFlagName.GetName());
+		}
+
+		if (AutocompleteParameter)
+		{
+			return FAutocompletionRequest::ParamValue(TokenForAutocompletion, Command, AutocompleteParameter);
+		}
+	}
+
+	// check if the user is trying to auto-complete something that resembles a parameter or a flag name
+	if (FCLIName::Parse(TokenForAutocompletion, ParamOrFlagName))
+	{
+		return FAutocompletionRequest::ParamName(ParamOrFlagName.GetName().ToString(), Command);
+	}
+
+	return FAutocompletionRequest::INVALID;
+}
+
 bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const
 {
 	if (InString.TrimStartAndEnd().IsEmpty())
@@ -320,68 +393,45 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 
 		return false;
 	}
-
-	FTokenizer Tokenizer_;
 	
-	// try to parse the command to understand what exactly the user is trying to auto-complete
-	if(!Tokenizer_.Parse(InString))
+	FAutocompletionRequest AutocompletionRequest = ResolveAutocompletionRequest(InString);
+
+	switch (AutocompletionRequest.GetType())
 	{
-		UE_LOG(LogTemp, Error, TEXT("Tokenizer error while trying to get a list of auto-completions: %s"), *Tokenizer_.GetError()->GetErrorMessage());
+	case Invalid:
 		return false;
-	}
-
-	const TArray<FString>& Tokens = Tokenizer_.GetTokens();
-	
-	// they are trying to auto-complete the command itself
-	if (Tokens.Num() == 1)
-	{
-		TArray<FString> CommandNames;
-		GetKnownCommandNames(CommandNames);
-
-		return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(InString, CommandNames, AutoCompletions);
-	}
-
-	// the user is trying to auto-complete parameter name or parameter value - in this case though we first need to know which command
-	UConsoleCommandBase* Command = FindCommandTemplate(FName(Tokenizer_.GetTokens()[0]));
-
-	if (!Command)
-	{
-		return false;
-	}
-
-	// parameter to auto-complete value of, if user is trying to auto-complete a parameter value
-	const UParameter* AutoCompleteParam = nullptr;
-
-	if (const bool bIsTryingToAutocompletePositionalParam = Tokenizer_.GetTokens().Num() <= Command->PositionalParameters.Num() + 1)
-	{
-		AutoCompleteParam = Command->PositionalParameters[Tokenizer_.GetTokens().Num() - 2];
-	} else
-	{
-		// we are trying to auto-complete a named param if the preceding token is the long or the short name of an existing parameter
-		FString PrecedingToken = Tokenizer_.GetTokens()[Tokenizer_.GetTokens().Num() - 2];
-
-		if (Tokenizer_.GetTokens().Num() > Command->PositionalParameters.Num() + 1)
+	case CommandName:
 		{
-			if (PrecedingToken.StartsWith("--")
-			&& Command->FindNamedParamByLongName(FName(PrecedingToken.TrimChar('-').TrimChar('-'))))
+			TArray<FString> CommandNames;
+			GetKnownCommandNames(CommandNames);
+
+			return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(
+				AutocompletionRequest.GetValue(),
+				CommandNames, AutoCompletions);
+		}
+	case ParameterName:
+		{
+			TArray<FName> ParameterAndFlagNames;
+			AutocompletionRequest.GetCommand()->GetParameterAndFlagNames(ParameterAndFlagNames);
+
+			TArray<FString> ParameterAndFlagNamesStr;
+			Algo::Transform(ParameterAndFlagNames, ParameterAndFlagNamesStr, [](const FName& Name) {return Name.ToString();});
+		
+			return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(
+				AutocompletionRequest.GetValue(),
+				ParameterAndFlagNamesStr, AutoCompletions);
+		}
+	case ParameterValue:
+		{
+			const auto AutocompleteParam = AutocompletionRequest.GetParameter();
+
+			if (AutocompleteParam->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 			{
-				AutoCompleteParam = Command->FindNamedParamByLongName(FName(PrecedingToken.TrimChar('-').TrimChar('-')));
-			} else if (PrecedingToken.StartsWith("-")
-				&& Command->FindNamedParamByShortName(FName(PrecedingToken.TrimChar('-'))))
-			{
-				AutoCompleteParam = Command->FindNamedParamByShortName(FName(PrecedingToken.TrimChar('-')));
+				return Execute_RequestAutocompletions(AutocompleteParam, InString, AutoCompletions);
 			}
 		}
 	}
-
-	if (AutoCompleteParam && AutoCompleteParam->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
-	{
-		return Execute_RequestAutocompletions(AutoCompleteParam, InString, AutoCompletions);
-	}
-
-	// finally, maybe the user is trying to auto-complete a named parameter or a flag name
-	// TODO
-
+	
 	return AutoCompletions.Num() > 0;
 }
 
@@ -406,7 +456,7 @@ bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const int32 
 	}
 
 	// no auto-completions when caret is preceded by whitespace
-	if (FChar::IsWhitespace(InCmdText[CaretPosition - 1]))
+	if (InCmdText.IsValidIndex(CaretPosition - 1) && FChar::IsWhitespace(InCmdText[CaretPosition - 1]))
 	{
 		return false;
 	}
@@ -418,6 +468,6 @@ bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const int32 
 	}
 
 	const auto SubstringForAutoCompletion = CaretPosition >= InCmdText.Len() ?
-		InCmdText : InCmdText.Mid(0, CaretPosition + 1);
+		InCmdText : InCmdText.Left(CaretPosition);
 	return RequestAutocompletions_Implementation(SubstringForAutoCompletion, AutoCompletions);
 }
