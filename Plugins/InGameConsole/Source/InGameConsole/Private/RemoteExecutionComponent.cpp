@@ -6,15 +6,6 @@
 #include "GameConsole.h"
 #include "Net/UnrealNetwork.h"
 
-bool URemoteCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
-                                                          bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
-{
-	OutStdOut = RemoteExecutionComponent->StdOut;
-	OutStdErr = RemoteExecutionComponent->StdErr;
-
-	return true;
-}
-
 void URemoteExecutionComponent::ReceiveCommandFeedbackOnClient_Implementation(const FString& Message,
 	bool bIsStdErr)
 {
@@ -31,11 +22,6 @@ void URemoteExecutionComponent::ReceiveCommandFeedbackOnClient_Implementation(co
 	}
 }
 
-void URemoteCommandExecutor::Initialize(URemoteExecutionComponent* InRemoteExecutionComponent)
-{
-	this->RemoteExecutionComponent = InRemoteExecutionComponent;
-}
-
 URemoteExecutionComponent::URemoteExecutionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
@@ -44,8 +30,9 @@ URemoteExecutionComponent::URemoteExecutionComponent()
 	StdOut = CreateDefaultSubobject<USimpleTextPipe>("StdOut");
 	StdErr = CreateDefaultSubobject<USimpleTextPipe>("StdErr");
 
-	RemoteCommandExecutor = CreateDefaultSubobject<URemoteCommandExecutor>("RemoteCommandExecutor");
-	RemoteCommandExecutor->Initialize(this);
+	RemoteCommandExecutor = CreateDefaultSubobject<UCommandExecutor>("RemoteCommandExecutor");
+	RemoteCommandExecutor->bAllowsParallelExecution = false;
+	RemoteCommandExecutor->bCanExecuteLatentCommands = false;
 
 	// push command feedback back to the client
 	StdOut->OnNewItem.AddLambda([this](const FString& Message)
@@ -119,6 +106,12 @@ void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(const FStr
 		StdErr->Write(ParsingError); // this will propagate over network if the altered client bypassed parsing
 		return;
 	}
+
+	if (!CommandTemplate->bIsServerCommand)
+	{
+		StdErr->Write("Remote execution of local commands is not allowed");
+		return;
+	}
 	
 	// server-side control for malicious execution attempts
 	if (!IsPlayerAllowedToExecute(CommandTemplate))
@@ -126,8 +119,8 @@ void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(const FStr
 		StdErr->Write(FString::Format(TEXT("This client is not allowed to execute '{0}'"), {CommandTemplate->CommandName.ToString()}));
 		return;
 	}
-
-	RemoteCommandExecutor->ExecuteInForeground(GetOwningController(), CommandTemplate->GetClass(), Args);
+	
+	RemoteCommandExecutor->Execute(GetOwningController(), CommandTemplate->GetClass(), Args, StdOut, StdErr);
 }
 
 void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(EExecutionAuthorityType Type,
@@ -148,7 +141,6 @@ void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(E
 		UE_LOG(LogTemp, Error, TEXT("Remote execution subsystem not found"));
 	}
 }
-
 
 bool URemoteExecutionSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {

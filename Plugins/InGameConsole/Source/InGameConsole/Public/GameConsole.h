@@ -22,6 +22,15 @@ public:
 	FKey ToggleKey;
 };
 
+/**
+ * game console is represented by a game instance subsystem to ensure the following:
+ * - command execution history, and console's stdout/stderr persist through the game instance
+ * - keeps track of registered console commands over the game instance duration
+ * - is the authority that understands the syntax of and parses commands and provides auto-completion
+ * - manages the console widget
+ *
+ * Note: command execution is handled by a world subsystem
+ */
 UCLASS(BlueprintType)
 class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAutoCompletionProvider
 {
@@ -38,8 +47,9 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	FTokenizer Tokenizer;
 	FCLIParser Parser;
 
+	// game console's command executor (for commands with lifetime duration == Game)
 	UPROPERTY()
-	UGameConsoleCommandExecutor* CommandExecutor;
+	UCommandExecutor* CommandExecutor;
 
 	/**
 	 * an input component that binds an input to opening the console during the game
@@ -66,6 +76,8 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	// history of executed commands
 	TArray<FString> ExecutionHistory;
 
+	TWeakObjectPtr<ULatentConsoleCommand> RunningInForeground; // TODO need to set and free this correspondingly
+
 	/**
 	 * 
 	 * @param CommandName name of the command
@@ -79,6 +91,13 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	void InitializeWidget();
 
 	void ProcessConsoleCommand(const APlayerController* Requester, const FString& Command);
+
+	/**
+	 * finds an appropriate executor for the command
+	 * @param CommandClass command class to find an executor for
+	 * @return 
+	 */
+	UCommandExecutor* FindExecutor(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass) const;
 
 public:
 	
@@ -187,26 +206,27 @@ public:
 };
 
 UCLASS()
-class UGameConsoleCommandExecutor : public UCommandExecutor
+class UCommandExecutionWorldSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
-	const UGameConsole* Console = nullptr;
-
+	UPROPERTY()
+	UCommandExecutor* Executor;
+	
 public:
-	void Initialize(const UGameConsole* InConsole)
+	UCommandExecutionWorldSubsystem()
 	{
-		this->Console = InConsole;
+		Executor = CreateDefaultSubobject<UCommandExecutor>("Executor");
+		Executor->bAllowsParallelExecution = false;
+		Executor->bCanExecuteLatentCommands = true;
 	}
-
-	virtual bool AllowsMultipleProcesses() const override
+	
+	UCommandExecutor* GetExecutor() const
 	{
-		return false;
+		return Executor;
 	}
-
-	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
-	                                                    bool bIsExecutingInForeground, ITextPipe*& OutStdOut,
-	                                                    ITextPipe*& OutStdErr) override;
+	
+	virtual void Deinitialize() override;
 };
 
 UCLASS()

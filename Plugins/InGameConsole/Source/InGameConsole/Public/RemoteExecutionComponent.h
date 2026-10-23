@@ -75,7 +75,7 @@ class INGAMECONSOLE_API URemoteExecutionComponent : public UActorComponent
 	 * we don't send commands executed by clients to server game console's executor - instead, execute them isolated in the owning controller
 	 */
 	UPROPERTY()
-	URemoteCommandExecutor* RemoteCommandExecutor;
+	UCommandExecutor* RemoteCommandExecutor;
 
 public:
 	// Sets default values for this component's properties
@@ -98,31 +98,6 @@ public:
 	 */
 	UFUNCTION(Server, Reliable)
 	void RequestServerExecutionAuthority(EExecutionAuthorityType Type, const FString& Key);
-};
-
-UCLASS()
-class URemoteCommandExecutor : public UCommandExecutor
-{
-	GENERATED_BODY()
-
-	URemoteExecutionComponent* RemoteExecutionComponent;
-
-protected:
-	virtual bool FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand, bool bIsExecutingInForeground,
-		ITextPipe*& OutStdOut, ITextPipe*& OutStdErr) override;
-	
-public:
-	virtual bool AllowsMultipleProcesses() const override
-	{
-		return false; // because it does not execute latent commands
-	}
-	
-	virtual bool CanExecuteLatentCommands() const override
-	{
-		return false;
-	}
-	
-	void Initialize(URemoteExecutionComponent* InRemoteExecutionComponent);
 };
 
 UENUM(BlueprintType)

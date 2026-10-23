@@ -60,10 +60,11 @@ private:
 };
 
 UENUM(BlueprintType)
-enum class ECommandLifecycleType : uint8
+enum class ECommandLifeTime : uint8
 {
-	RecreateEachInvocation UMETA(ToolTip = "The command object will be created new for each invocation. Use this for commands which do not need a persistent state"),
-	Persistent UMETA(ToolTip = "The command object will be created once on first invocation and persist through the game instance lifetim. Use this for commands that have their own persistent state")
+	Invocation		UMETA(ToolTip = "A command instance is recreated for each invocation and destroyed when execution finishes. For latent commands, an instance is destroyed when the earlier of the two happens: execution finishes or level is destroyed"),
+	Level			UMETA(ToolTip = "A command instance is created on first invocation and persists for the current level (UWorld) duration"),
+	Game			UMETA(ToolTip = "A command instance is created on first invocation and persists for the duration of the game instance")
 };
 
 
@@ -94,7 +95,7 @@ public:
 	FString Category;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	ECommandLifecycleType LifecycleType;
+	ECommandLifeTime LifecycleType;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
 		ToolTip = "Whether this command is supposed to be executed on the server"))
@@ -173,7 +174,7 @@ public:
 	// persistent commands exist for the game instance's duration
 	bool IsPersistent() const
 	{
-		return LifecycleType == ECommandLifecycleType::Persistent;
+		return LifecycleType == ECommandLifeTime::Level || LifecycleType == ECommandLifeTime::Game;
 	}
 	
 	const UParameter* FindNamedParamByLongName(const FName& Name);

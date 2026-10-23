@@ -5,18 +5,12 @@
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
-bool UGameConsoleCommandExecutor::FindOutputChannelsForCommand(const UConsoleCommandBase* ConsoleCommand,
-                                                                         bool bIsExecutingInForeground, ITextPipe*& OutStdOut, ITextPipe*& OutStdErr)
+void UCommandExecutionWorldSubsystem::Deinitialize()
 {
-	if (!bIsExecutingInForeground)
-	{
-		return false;
-	}
+	Super::Deinitialize();
 
-	OutStdOut = Console->StdOut;
-	OutStdErr = Console->StdErr;
-
-	return true;
+	Executor->Reset();
+	Executor->MarkAsGarbage();
 }
 
 void UGameConsoleInputSubsystem::PlayerControllerChanged(APlayerController* NewPlayerController)
@@ -54,8 +48,9 @@ void UGameConsole::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 
 	// create the executor
-	CommandExecutor = NewObject<UGameConsoleCommandExecutor>(this, UGameConsoleCommandExecutor::StaticClass());
-	CommandExecutor->Initialize(this);
+	CommandExecutor = NewObject<UCommandExecutor>(this, UCommandExecutor::StaticClass());
+	CommandExecutor->bAllowsParallelExecution = false;
+	CommandExecutor->bCanExecuteLatentCommands = true;
 	
 	InitializeInputComponent();
 	InitializeWidget();
@@ -139,10 +134,49 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 		RemoteExecutionComponent->ExecuteCommandOnServer(Command);
 	} else
 	{
-		CommandExecutor->ExecuteInForeground(Requester, CommandTemplate->GetClass(), Args);
+		if (UCommandExecutor* Executor = FindExecutor(Requester, CommandTemplate->GetClass()))
+		{
+			ULatentConsoleCommand* CommandHandle;
+			if (!Executor->Execute(Requester, CommandTemplate->GetClass(), Args, StdOut, StdErr, CommandHandle))
+			{
+				UE_LOG(LogTemp, Error, TEXT("Command execution failed: '%s'"), *Command);
+				return;
+			}
+
+			if (CommandHandle)
+			{
+				RunningInForeground = CommandHandle;
+			}
+		} else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Could not find command executor: '%s'"), *Command);
+		}
 	}
 
 	ExecutionHistory.Add(Command);
+}
+
+UCommandExecutor* UGameConsole::FindExecutor(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass) const
+{
+	const auto CommandTemplate = CommandClass.GetDefaultObject();
+
+	// invocation and world-persistent commands are delegated to world subsystem for execution
+	if (CommandTemplate->LifecycleType == ECommandLifeTime::Invocation || CommandTemplate->LifecycleType == ECommandLifeTime::Level)
+	{
+		if (Requester->GetWorld() && Requester->GetWorld()->GetSubsystem<UCommandExecutionWorldSubsystem>())
+		{
+			return Requester->GetWorld()->GetSubsystem<UCommandExecutionWorldSubsystem>()->GetExecutor();
+		}
+	} else if (CommandTemplate->LifecycleType == ECommandLifeTime::Game)
+	{
+		return CommandExecutor;
+	} else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cannot find command executor for the unknown command lifetime %s"),
+			*UEnum::GetDisplayValueAsText(CommandTemplate->LifecycleType).ToString());
+	}
+
+	return nullptr;
 }
 
 void UGameConsole::ShowUI()
@@ -170,18 +204,19 @@ void UGameConsole::ShowUI()
 
 void UGameConsole::ProcessConsoleInput(const FString& Input)
 {
-	// TODO double-check this logic
+	// TODO we probably should route commands through a PC component instead of finding the world in this fashion
 	auto World = GetGameInstance()->GetWorld();
 	if (!World)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Cannot process game console input because game world is missing"));
 		return;
 	}
-		
+
+	// TODO here we just blindly assume that the first local controller submitted the input
 	const APlayerController* Requester = UGameplayStatics::GetPlayerController(World, 0);
 		
 	// is there a foreground command that waits for user input?
-	if (ULatentConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
+	if (ULatentConsoleCommand* ForegroundCommand = RunningInForeground.Get())
 	{
 		if (ForegroundCommand->IsWaitingForUserInput())
 		{
@@ -277,7 +312,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	}
 	
 	// see if there's a foreground command waiting for user input - in this case we delegate auto-completion to the command
-	if (const ULatentConsoleCommand* ForegroundCommand = CommandExecutor->GetCurrentForegroundCommand())
+	if (const ULatentConsoleCommand* ForegroundCommand = RunningInForeground.Get())
 	{
 		if (ForegroundCommand->IsWaitingForUserInput() && ForegroundCommand->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 		{
