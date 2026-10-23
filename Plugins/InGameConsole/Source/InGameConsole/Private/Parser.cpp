@@ -24,82 +24,115 @@ void FTokenizer::ParseImpl()
 	}
 }
 
-bool FCLIParser::ParseArguments(const TArray<FString>& Tokens, const UConsoleCommandBase* Command,
-                                FCommandArguments& OutArgs, FString& OutError)
+const UParameter* FCLIParser::TryFindParameterForToken(const FString& Token, const UConsoleCommandBase* Command) const
 {
-	// -- positional parameters --
-	for (int PositionalParamIdx = 0; PositionalParamIdx < Command->PositionalParameters.Num(); PositionalParamIdx++)
+	if (DoesLookLikeLongArgName(Token))
 	{
-		const FString* SuppliedValuePtr = nullptr;
-		if (Tokens.IsValidIndex(PositionalParamIdx + 1)) // we have the command name at idx = 0
+		return Command->FindNamedParamByLongName(FName(Token.TrimChar('-').TrimChar('-')));
+	}
+
+	if (DoesLookLikeShortArgName(Token))
+	{
+		return Command->FindNamedParamByShortName(FName(Token.TrimChar('-')));
+	}
+
+	return nullptr;
+}
+
+const FFlagDescription* FCLIParser::TryFindFlagSpecForToken(const FString& Token, const UConsoleCommandBase* Command) const
+{
+	for (const FFlagDescription& FlagSpec : Command->Flags)
+	{
+		if (DoesLookLikeLongArgName(Token) && FlagSpec.Name.ToString().Equals(Token.TrimChar('-').TrimChar('-')))
 		{
-			SuppliedValuePtr = &Tokens[PositionalParamIdx + 1];
+			return &FlagSpec;
 		}
 
-		const auto ParameterSpec = Command->PositionalParameters[PositionalParamIdx];
-		if (!InitArgumentValue(ParameterSpec, SuppliedValuePtr, OutArgs, Command, OutError))
+		if (DoesLookLikeShortArgName(Token) && FlagSpec.ShortName.ToString().Equals(Token.TrimChar('-')))
+		{
+			return &FlagSpec;
+		}
+	}
+
+	return nullptr;
+}
+
+bool FCLIParser::ParseArguments(const TArray<FString>& InTokens, const UConsoleCommandBase* Command,
+                                FCommandArguments& OutArgs, FString& OutError)
+{
+	auto Tokens = MakeArrayView(InTokens);
+	
+	// remove the command name
+	Tokens = Tokens.RightChop(1);
+
+	// positional arguments
+	const int NumPositionalArgs = Command->PositionalParameters.Num();
+
+	for (int i = 0; i < NumPositionalArgs; i++)
+	{
+		const auto ParamSpec = Command->PositionalParameters[i];
+		
+		if (!Tokens.IsValidIndex(i))
+		{
+			OutError = FString::Format(TEXT("Missing positional argument: {0}"), {ParamSpec->Name.ToString()});
+			return false;
+		}
+
+		if (!InitArgumentValue(ParamSpec, &Tokens[i], OutArgs, Command, OutError))
 		{
 			return false;
 		}
 	}
 
-	// -- named parameters --
-	for (const auto ParamSpec : Command->NamedParameters)
-	{
-		// try to find by long name first
-		int TokenIdx = Tokens.IndexOfByPredicate([ParamSpec](const FString& Token)
-		{
-			return Token == FString("--") + ParamSpec->Name.ToString();
-		});
+	// consume tokens for the positional arguments
+	Tokens = Tokens.RightChop(NumPositionalArgs);
 
-		// if failed, try to find by short name
-		if (TokenIdx <= 0)
+	// the rest of the tokens are named parameters or flags
+	for (int i = 0; i < Tokens.Num(); i++)
+	{
+		const FString Token = Tokens[i];
+		
+		bool bIsParam = false;
+		bool bIsFlag = false;
+		const UParameter* ParamSpec;
+		const FFlagDescription* FlagSpec;
+
+		if (!DoesLookLikeArgName(Token))
 		{
-			TokenIdx = Tokens.IndexOfByPredicate([ParamSpec](const FString& Token)
-			{
-				return Token == FString("-" + ParamSpec->ShortName.ToString());
-			});
+			OutError = FString::Format(TEXT("Expected a parameter or flag name, found {0} instead"), {Token});
+			return false;
 		}
 
-		const bool bFound = TokenIdx > 0; // command name at 0
-
-		if (!bFound)
+		if (ParamSpec = TryFindParameterForToken(Token, Command); ParamSpec != nullptr)
 		{
-			// try to initialize with its default value (this will fail if the param is required)
-			if (!InitArgumentValue(ParamSpec, nullptr, OutArgs, Command, OutError))
+			bIsParam = true;
+		} else if (FlagSpec = TryFindFlagSpecForToken(Token, Command); FlagSpec != nullptr)
+		{
+			bIsFlag = true;
+		} else
+		{
+			OutError = FString::Format(TEXT("Cannot find either parameter or flag: '{0}'"), {Token});
+			return false;
+		}
+		
+		if (bIsParam)
+		{
+			// you have to supply argument value if you use its name in the command
+			if (!Tokens.IsValidIndex(++i))
 			{
+				OutError = FString::Format(TEXT("Expected a value for parameter: {0}"), {Token});
 				return false;
 			}
 
-			continue;
-		}
-
-		// supplied the name - supply the value
-		if (!Tokens.IsValidIndex(TokenIdx + 1))
+			if (!InitArgumentValue(ParamSpec, &Tokens[i], OutArgs, Command, OutError))
+			{
+				return false;
+			}
+		} else if (bIsFlag)
 		{
-			OutError = FString::Format(TEXT("Expected a value supplied for parameter '{0}'"), {ParamSpec->Name.ToString()});
-			return false;
-		}
-
-		if (!InitArgumentValue(ParamSpec, &Tokens[TokenIdx + 1], OutArgs, Command, OutError))
-		{
-			return false;
+			OutArgs.AddFlag(Token.TrimChar('-').TrimChar('-'));
 		}
 	}
 
-	// flags
-	for (const auto& FlagSpec : Command->Flags)
-	{
-		// try to find by long name and by short name
-		if (Tokens.ContainsByPredicate([&FlagSpec](const FString& Token)
-		{
-			return Token == FString("--") + FlagSpec.Name.ToString() ||
-				Token == FString("-") + FlagSpec.ShortName.ToString();
-		}))
-		{
-			OutArgs.AddFlag(FlagSpec.Name.ToString());
-		}
-	}
-
-	return true;
+	return Command->ValidateArguments(OutArgs, OutError);
 }

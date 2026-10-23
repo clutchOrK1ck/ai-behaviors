@@ -3,6 +3,9 @@
 
 #include "ConsoleCommandBase.h"
 
+#include "Algo/AllOf.h"
+#include "Algo/AnyOf.h"
+
 void ULatentConsoleCommand::FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason Reason)
 {
 	bIsExecuting = false;
@@ -99,7 +102,7 @@ void ULatentConsoleCommand::Abort()
 	FinishExecutionAndCleanUp(EOnLatentCommandExecutionEndingReason::ExecutionAborted);
 }
 
-const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name)
+const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Name) const
 {
 	if (const TObjectPtr<UParameter>* Result = NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
@@ -112,7 +115,7 @@ const UParameter* UConsoleCommandBase::FindNamedParamByLongName(const FName& Nam
 	return nullptr;
 }
 
-const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Name)
+const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Name) const
 {
 	if (const TObjectPtr<UParameter>* Result = NamedParameters.FindByPredicate([&Name](const UParameter* Parameter)
 	{
@@ -123,6 +126,56 @@ const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Na
 	}
 
 	return nullptr;
+}
+
+bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const
+{
+	// note: FCommandArguments must contain values for ALL argumnets, also optional ones; they must be populated by the parser
+
+	// -- missing parameters
+	auto PredicateMissing = [&InArgs](const UParameter* Parameter)
+	{
+		return !InArgs.HasArgumentWithName(Parameter->Name);
+	};
+	
+	TArray<UParameter*> MissingParams = PositionalParameters.FilterByPredicate(PredicateMissing);
+	MissingParams.Append(NamedParameters.FilterByPredicate(PredicateMissing));
+
+	if (MissingParams.Num() > 0)
+	{
+		TArray<FString> MissingParamNames;
+		Algo::Transform(MissingParams, MissingParamNames, [](const UParameter* Parameter)
+		{
+			return Parameter->Name.ToString();
+		});
+		
+		OutError = FString::Format(TEXT("Missing arguments: {0}"), {FString::Join(MissingParamNames, TEXT(", "))});
+		return false;
+	}
+
+	// -- unknown parameters or flags
+	auto PredicateUnknown = [this](const FName& Name)
+	{
+		return FindNamedParamByLongName(Name) == nullptr; // TODO flags?
+	};
+
+	TArray<FName> AllNames;
+	InArgs.GetArgumentAndFlagNames(AllNames);
+	
+	TArray<FName> UnknownNames = AllNames.FilterByPredicate(PredicateUnknown);
+	TArray<FString> UnknownNamesStr;
+	Algo::Transform(UnknownNames, UnknownNamesStr, [](const FName& Name)
+	{
+		return Name.ToString();
+	});
+
+	if (UnknownNames.Num() > 0)
+	{
+		OutError = FString::Format(TEXT("Unknown argument names supplied: {0}"), {FString::Join(UnknownNamesStr, TEXT(", "))}); // TODO can we do this to an array of names directly?
+		return false;
+	}
+
+	return true;
 }
 
 bool UConsoleCommandBase::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const

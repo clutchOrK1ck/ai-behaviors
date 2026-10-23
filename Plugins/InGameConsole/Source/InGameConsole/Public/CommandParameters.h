@@ -31,6 +31,11 @@ struct FCommandArguments
 	template<typename T>
 	void Add(const FName& ArgName, const T& ArgValue);
 
+	bool HasArgumentWithName(const FName& ArgName) const
+	{
+		return Args.Contains(ArgName);
+	}
+
 	void AddFlag(const FString& Flag)
 	{
 		Flags.Add(Flag);
@@ -39,6 +44,15 @@ struct FCommandArguments
 	bool HasFlag(const FString& Flag) const
 	{
 		return Flags.Contains(Flag);
+	}
+
+	void GetArgumentNames(TArray<FName>& OutNames) const;
+	void GetFlagNames(TArray<FName>& OutFlags) const;
+	
+	void GetArgumentAndFlagNames(TArray<FName>& OutNames) const
+	{
+		GetArgumentNames(OutNames);
+		GetFlagNames(OutNames);
 	}
 
 private:

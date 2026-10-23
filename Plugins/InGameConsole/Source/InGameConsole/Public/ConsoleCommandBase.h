@@ -177,10 +177,18 @@ public:
 		return LifecycleType == ECommandLifeTime::Level || LifecycleType == ECommandLifeTime::Game;
 	}
 	
-	const UParameter* FindNamedParamByLongName(const FName& Name);
-	const UParameter* FindNamedParamByShortName(const FName& Name);
+	const UParameter* FindNamedParamByLongName(const FName& Name) const;
+	const UParameter* FindNamedParamByShortName(const FName& Name) const;
 	
-	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext,);
+	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext,)
+
+	/**
+	 * checks whether all required arguments have been supplied and that there are no unknown arguments
+	 * @param InArgs 
+	 * @param OutError 
+	 * @return 
+	 */
+	bool ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const;;
 	
 	UFUNCTION(BlueprintImplementableEvent, meta=(
 		ToolTip = "Override this to provide parameter allowed values dynamically"))

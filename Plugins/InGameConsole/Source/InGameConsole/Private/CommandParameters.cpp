@@ -44,6 +44,19 @@ bool UIntegerParameter::ParseAndValidate(const FString& Value, const UConsoleCom
 	return true;
 }
 
+void FCommandArguments::GetArgumentNames(TArray<FName>& OutNames) const
+{
+	Args.GetKeys(OutNames);
+}
+
+void FCommandArguments::GetFlagNames(TArray<FName>& OutFlags) const
+{
+	for (const FString& Flag : Flags)
+	{
+		OutFlags.Add(FName(Flag));
+	}
+}
+
 bool FStringValidationSettings::Validate(const FString& Value, FString& OutError) const
 {
 	switch (ValidationType)
