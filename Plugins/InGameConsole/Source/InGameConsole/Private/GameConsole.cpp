@@ -4,6 +4,72 @@
 #include "ConsoleCommandBase.h"
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "Widgets/SViewport.h"
+#include "Widgets/SGameConsole.h"
+
+/** Handle the configured key before UConsole consumes Tilde. Scoped to this game's focused viewport. */
+class FGameConsoleInputProcessor : public IInputProcessor
+{
+public:
+
+	explicit FGameConsoleInputProcessor(UGameConsole* InConsole) : Console(InConsole)
+	{
+	}
+
+	virtual void Tick(float, FSlateApplication&, TSharedRef<ICursor>) override
+	{
+	}
+
+	virtual bool HandleKeyDownEvent(FSlateApplication&, const FKeyEvent& Event) override
+	{
+		UGameConsole* Owner = Console.Get();
+		if (!Owner || Event.GetKey() != GetDefault<UGameConsoleSettings>()->ToggleKey
+			|| Event.IsControlDown() || Event.IsAltDown() || Event.IsCommandDown())
+		{
+			return false;
+		}
+
+		UGameViewportClient* Viewport = Owner->GetGameInstance()->GetGameViewportClient();
+		TSharedPtr<SViewport> ViewportWidget = Viewport ? Viewport->GetGameViewportWidget() : nullptr;
+		const bool bViewportFocused = ViewportWidget.IsValid()
+			&& (ViewportWidget->HasKeyboardFocus() || ViewportWidget->HasFocusedDescendants());
+		const bool bConsoleFocused = Owner->Widget.IsValid() && Owner->Widget->HasFocusedDescendants();
+		if (!bViewportFocused && !bConsoleFocused)
+		{
+			return false;
+		}
+
+		if (!Event.IsRepeat())
+		{
+			Owner->bToggleKeyPressed = true;
+			Owner->ToggleUI();
+		}
+
+		return true;
+	}
+
+	virtual bool HandleKeyUpEvent(FSlateApplication&, const FKeyEvent& Event) override
+	{
+		if (UGameConsole* Owner = Console.Get())
+		{
+			if (Event.GetKey() == GetDefault<UGameConsoleSettings>()->ToggleKey)
+			{
+				const bool bHandled = Owner->bToggleKeyPressed;
+				Owner->bToggleKeyPressed = false;
+				return bHandled;
+			}
+		}
+
+		return false;
+	}
+
+private:
+
+	TWeakObjectPtr<UGameConsole> Console;
+};
 
 const FAutocompletionRequest FAutocompletionRequest::INVALID = FAutocompletionRequest(Invalid, "", nullptr, nullptr);
 
@@ -19,8 +85,14 @@ void UGameConsoleInputSubsystem::PlayerControllerChanged(APlayerController* NewP
 {
 	Super::PlayerControllerChanged(NewPlayerController);
 
-	if (const UGameConsole* Console = GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>())
+	if (!NewPlayerController || !GetWorld() || !GetWorld()->GetGameInstance())
 	{
+		return;
+	}
+
+	if (UGameConsole* Console = GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>())
+	{
+		Console->HideUI();
 		NewPlayerController->PushInputComponent(Console->GetInputComponent());
 	} else
 	{
@@ -53,47 +125,52 @@ void UGameConsole::Initialize(FSubsystemCollectionBase& Collection)
 	CommandExecutor = NewObject<UCommandExecutor>(this, UCommandExecutor::StaticClass());
 	CommandExecutor->bAllowsParallelExecution = false;
 	CommandExecutor->bCanExecuteLatentCommands = true;
-	
+
 	InitializeInputComponent();
-	InitializeWidget();
+
+	StdOut->OnNewItem.AddUObject(this, &UGameConsole::AppendOutput, EConsoleLineType::Display);
+	StdErr->OnNewItem.AddUObject(this, &UGameConsole::AppendOutput, EConsoleLineType::Error);
+
+	if (FSlateApplication::IsInitialized() && !IsRunningDedicatedServer())
+	{
+		SlateInputProcessor = MakeShared<FGameConsoleInputProcessor>(this);
+		FSlateApplication::Get().RegisterInputPreProcessor(SlateInputProcessor, 0);
+	}
 }
 
+void UGameConsole::Deinitialize()
+{
+	HideUI();
+	if (SlateInputProcessor.IsValid() && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().UnregisterInputPreProcessor(SlateInputProcessor);
+	}
+
+	SlateInputProcessor.Reset();
+	Widget.Reset();
+	StdOut->OnNewItem.RemoveAll(this);
+	StdErr->OnNewItem.RemoveAll(this);
+	Super::Deinitialize();
+}
+
+void UGameConsole::AppendOutput(const FString& Text, EConsoleLineType Type)
+{
+	const FConsoleOutputLine Line{Text, Type};
+	OutputLines.Add(Line);
+	OnOutput.Broadcast(Line);
+}
 
 void UGameConsole::InitializeInputComponent()
 {
 	if (InputComponent == nullptr)
 	{
 		InputComponent = NewObject<UInputComponent>(this, UInputComponent::StaticClass());
-		
+
 		InputComponent->BindKey(
 			GetDefault<UGameConsoleSettings>()->ToggleKey,
 			IE_Pressed,
 			this,
-			&UGameConsole::ShowUI);
-	}
-}
-
-void UGameConsole::InitializeWidget()
-{
-	if (WidgetClass.Get() != nullptr)
-	{
-		Widget = CreateWidget<UConsoleWidget>(this->GetGameInstance(), WidgetClass.Get());
-
-		if (!Widget)
-		{
-			return;
-		}
-
-		// make the widget listen to stdout and stderr of the game console
-		this->StdOut->OnNewItem.AddLambda([this](const FString& Line)
-		{
-			Widget->OnNewLine(Line, EConsoleLineType::Display);
-		});
-
-		this->StdErr->OnNewItem.AddLambda([this](const FString& Line)
-		{
-			Widget->OnNewLine(Line, EConsoleLineType::Error);
-		});
+			&UGameConsole::ToggleUI);
 	}
 }
 
@@ -115,7 +192,7 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 	}
 
 	const bool bRemoteExecution = CommandTemplate->bIsServerCommand && GetWorld()->GetNetMode() == NM_Client;
-	
+
 	// check that remote execution component exists on the player controller
 	if (bRemoteExecution)
 	{
@@ -124,7 +201,7 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			StdErr->Write("Remote execution of latent commands is not allowed");
 			return;
 		}
-		
+
 		URemoteExecutionComponent* RemoteExecutionComponent = Requester->FindComponentByClass<URemoteExecutionComponent>();
 		if (!RemoteExecutionComponent)
 		{
@@ -137,7 +214,7 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			StdErr->Write("You are not allowed to execute bla bla, this is server-only command, please request authority");
 			return;
 		}
-		
+
 		RemoteExecutionComponent->ExecuteCommandOnServer(Command);
 	} else
 	{
@@ -201,29 +278,99 @@ UCommandExecutor* UGameConsole::FindExecutor(const APlayerController* Requester,
 
 void UGameConsole::ShowUI()
 {
-	if (Widget == nullptr)
+	if (bUIVisible || !FSlateApplication::IsInitialized())
 	{
-		if (WidgetClass.Get() != nullptr)
-		{
-			InitializeWidget();
+		return;
+	}
 
-			if (Widget == nullptr)
-			{
-				UE_LOG(LogTemp, Error, TEXT("Console widget initialization failed"));
-				return;
-			}
-		} else
+	UGameViewportClient* Viewport = GetGameInstance()->GetGameViewportClient();
+	if (!Viewport)
+	{
+		return;
+	}
+
+	if (!Widget.IsValid())
+	{
+		Widget = SNew(SGameConsole).Console(this);
+	}
+
+	PreviousKeyboardFocus = FSlateApplication::Get().GetKeyboardFocusedWidget();
+	WidgetViewport = Viewport;
+	bUIVisible = true;
+	if (APlayerController* Controller = GetGameInstance()->GetFirstLocalPlayerController())
+	{
+		UIController = Controller;
+		bPreviousMouseCursor = Controller->bShowMouseCursor;
+		Controller->bShowMouseCursor = true;
+		Controller->SetIgnoreLookInput(true);
+		Controller->SetIgnoreMoveInput(true);
+	}
+
+	Viewport->AddViewportWidgetContent(Widget.ToSharedRef(), 10000);
+	FSlateApplication::Get().ReleaseAllPointerCapture();
+	Widget->FocusInput();
+}
+
+void UGameConsole::HideUI()
+{
+	if (!bUIVisible)
+	{
+		return;
+	}
+
+	bUIVisible = false;
+	if (Widget.IsValid())
+	{
+		Widget->DismissCompletions();
+		if (UGameViewportClient* Viewport = WidgetViewport.Get())
 		{
-			UE_LOG(LogTemp, Error, TEXT("Cannot construct console widget because widget class is not configured"));
-			return;
+			Viewport->RemoveViewportWidgetContent(Widget.ToSharedRef());
 		}
 	}
 
-	Widget->AddToViewport();
+	if (APlayerController* Controller = UIController.Get())
+	{
+		Controller->bShowMouseCursor = bPreviousMouseCursor;
+		Controller->SetIgnoreLookInput(false);
+		Controller->SetIgnoreMoveInput(false);
+	}
+
+	UIController.Reset();
+	WidgetViewport.Reset();
+	if (FSlateApplication::IsInitialized())
+	{
+		if (TSharedPtr<SWidget> Previous = PreviousKeyboardFocus.Pin())
+		{
+			FSlateApplication::Get().SetKeyboardFocus(Previous);
+		} else
+		{
+			FSlateApplication::Get().SetAllUserFocusToGameViewport();
+		}
+	}
+
+	PreviousKeyboardFocus.Reset();
+}
+
+void UGameConsole::ToggleUI()
+{
+	if (bUIVisible)
+	{
+		HideUI();
+	} else
+	{
+		ShowUI();
+	}
 }
 
 void UGameConsole::ProcessConsoleInput(const FString& Input)
 {
+	if (Input.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+
+	AppendOutput(TEXT("> ") + Input, EConsoleLineType::Input);
+
 	// TODO we probably should route commands through a PC component instead of finding the world in this fashion
 	auto World = GetGameInstance()->GetWorld();
 	if (!World)
@@ -234,7 +381,12 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 
 	// TODO here we just blindly assume that the first local controller submitted the input
 	const APlayerController* Requester = UGameplayStatics::GetPlayerController(World, 0);
-		
+	if (!Requester)
+	{
+		StdErr->Write(TEXT("Cannot execute console input without a player controller."));
+		return;
+	}
+
 	// is there a foreground command that waits for user input?
 	if (ULatentConsoleCommand* ForegroundCommand = RunningInForeground.Get())
 	{
@@ -285,10 +437,17 @@ void UGameConsole::Reset()
 	StdOut->Clear();
 	StdErr->Clear();
 
-	if (const auto CommandExecutionWorldSubsystem = GetWorld()->GetSubsystem<UCommandExecutionWorldSubsystem>())
+	if (UWorld* World = GetWorld())
 	{
-		CommandExecutionWorldSubsystem->GetExecutor()->Reset();
+		if (const auto CommandExecutionWorldSubsystem = World->GetSubsystem<UCommandExecutionWorldSubsystem>())
+		{
+			CommandExecutionWorldSubsystem->GetExecutor()->Reset();
+		}
 	}
+
+	RunningInForeground.Reset();
+	OutputLines.Empty();
+	OnOutputCleared.Broadcast();
 }
 
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant) const
@@ -331,7 +490,7 @@ bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& Co
 FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString& AutocompletionString) const
 {
 	FAutocompletionTokenizer Tokenizer_;
-	
+
 	// try to parse the command to understand what exactly the user is trying to auto-complete
 	if(!Tokenizer_.Parse(AutocompletionString))
 	{
@@ -340,7 +499,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 	}
 
 	auto Tokens = MakeArrayView(Tokenizer_.GetTokens());
-	
+
 	// they are trying to auto-complete the command itself
 	if (Tokens.Num() == 1)
 	{
@@ -358,7 +517,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 	{
 		return FAutocompletionRequest::INVALID;
 	}
-	
+
 	const FString TokenForAutocompletion = Tokens.Last();
 	const int32 AutocompletionTokenIdx = Tokens.Num() - 1;
 
@@ -369,7 +528,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 
 	// consume positional parameters for convenience
 	Tokens = Tokens.RightChop(Command->PositionalParameters.Num());
-	
+
 	// check first if we are trying to auto-complete a value of valid named parameter (preceding token is a valid parameter name)
 	FCLIName ParamOrFlagName;
 	if (Tokens.Num() > 1 && FCLIName::Parse(Tokens[Tokens.Num() - 2], ParamOrFlagName))
@@ -398,7 +557,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 		{
 			return FAutocompletionRequest::INVALID;
 		}
-		
+
 		return FAutocompletionRequest::ParamName(ParamOrFlagName.GetName().ToString(), Command);
 	}
 
@@ -411,7 +570,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 	{
 		return false;
 	}
-	
+
 	// see if there's a foreground command waiting for user input - in this case we delegate auto-completion to the command
 	if (const ULatentConsoleCommand* ForegroundCommand = RunningInForeground.Get())
 	{
@@ -422,7 +581,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 
 		return false;
 	}
-	
+
 	FAutocompletionRequest AutocompletionRequest = ResolveAutocompletionRequest(InString);
 
 	switch (AutocompletionRequest.GetType())
@@ -438,6 +597,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 				AutocompletionRequest.GetValue(),
 				CommandNames, AutoCompletions);
 		}
+
 	case ParameterName:
 		{
 			// suggest autocompletions for *named* parameters and flags
@@ -452,11 +612,12 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 			{
 				ParameterAndFlagNames.Add(Flag.Name.ToString());
 			}
-		
+
 			return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(
 				AutocompletionRequest.GetValue(),
 				ParameterAndFlagNames, AutoCompletions);
 		}
+
 	case ParameterValue:
 		{
 			const auto AutocompleteParam = AutocompletionRequest.GetParameter();
@@ -467,7 +628,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 			}
 		}
 	}
-	
+
 	return AutoCompletions.Num() > 0;
 }
 

@@ -5,13 +5,19 @@
 #include "CoreMinimal.h"
 #include "AutoCompletionProvider.h"
 #include "ConsoleCommandBase.h"
-#include "ConsoleWidget.h"
+#include "ConsoleOutput.h"
 #include "Parser.h"
 #include "Execution.h"
 #include "InputCoreTypes.h"
 #include "Net/OnlineEngineInterface.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameConsole.generated.h"
+
+class SGameConsole;
+class SWidget;
+class UGameViewportClient;
+class IInputProcessor;
+class FGameConsoleInputProcessor;
 
 UCLASS(BlueprintType, Config=Game, defaultconfig, meta=(DisplayName = "Game Console"))
 class UGameConsoleSettings : public UDeveloperSettings
@@ -20,7 +26,7 @@ class UGameConsoleSettings : public UDeveloperSettings
 
 public:
 	UPROPERTY(EditAnywhere, Config)
-	FKey ToggleKey;
+	FKey ToggleKey = EKeys::Tilde;
 };
 
 //~ autocompletion
@@ -75,14 +81,14 @@ struct FAutocompletionRequest
 	}
 
 	static const FAutocompletionRequest INVALID;
-	
+
 private:
 	FAutocompletionRequest(EAutocompletionRequestType Type,
 	                       const FString& InValue, const UConsoleCommandBase* Command, const UParameter* Parameter) :
 		Type(Type), Value(InValue), AutocompleteParameter(Parameter), Command(Command)
 	{
 	}
-	
+
 	EAutocompletionRequestType Type;
 	FString Value;
 	const UParameter* AutocompleteParameter;
@@ -106,6 +112,8 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	GENERATED_BODY()
 
 	friend class UGameConsoleCommandExecutor;
+	friend class FGameConsoleInputProcessor;
+	friend class SGameConsole;
 
 	UPROPERTY()
 	TObjectPtr<USimpleTextPipe> StdOut;
@@ -126,17 +134,17 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UPROPERTY()
 	UInputComponent* InputComponent = nullptr;
 
-	/**
-	 * the widget class for the console widget to create
-	 */
-	UPROPERTY()
-	TSubclassOf<UConsoleWidget> WidgetClass;
-	
-	/**
-	 * the console widget, owned and managed by the console
-	 */
-	UPROPERTY()
-	UConsoleWidget* Widget = nullptr;
+	TSharedPtr<SGameConsole> Widget;
+	TWeakPtr<SWidget> PreviousKeyboardFocus;
+	TWeakObjectPtr<UGameViewportClient> WidgetViewport;
+	TArray<FConsoleOutputLine> OutputLines;
+	bool bUIVisible = false;
+	bool bToggleKeyPressed = false;
+	TSharedPtr<IInputProcessor> SlateInputProcessor;
+	bool bPreviousMouseCursor = false;
+	TWeakObjectPtr<APlayerController> UIController;
+
+	void AppendOutput(const FString& Text, EConsoleLineType Type);
 
 	// a set of all commands known to this console
 	UPROPERTY()
@@ -157,10 +165,8 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 
 	void InitializeInputComponent();
 
-	void InitializeWidget();
-
 	void OnForegroundCommandFinished();
-	
+
 	void ProcessConsoleCommand(const APlayerController* Requester, const FString& Command);
 
 	/**
@@ -171,7 +177,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	UCommandExecutor* FindExecutor(const APlayerController* Requester, const TSubclassOf<UConsoleCommandBase>& CommandClass) const;
 
 public:
-	
+
 	UGameConsole()
 	{
 		StdOut = CreateDefaultSubobject<USimpleTextPipe>(FName(TEXT("StandardOutput")));
@@ -179,8 +185,26 @@ public:
 	}
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	void ShowUI();
+
+	void HideUI();
+
+	void ToggleUI();
+
+	bool IsUIVisible() const
+	{
+		return bUIVisible;
+	}
+
+	const TArray<FConsoleOutputLine>& GetOutputLines() const
+	{
+		return OutputLines;
+	}
+
+	FOnConsoleOutput OnOutput;
+	FOnConsoleOutputCleared OnOutputCleared;
 
 	/**
 	 * returns an input component that can open this console 
@@ -191,12 +215,6 @@ public:
 		return InputComponent;
 	}
 
-	UFUNCTION(BlueprintCallable)
-	void SetWidgetClass(TSubclassOf<UConsoleWidget> InWidgetClass)
-	{
-		this->WidgetClass = InWidgetClass;
-	}
-	
 	/**
 	 * send a line of text to console and ask to process it
 	 *
@@ -248,7 +266,7 @@ public:
 	bool ParseCommand(const FString& Command, UConsoleCommandBase*& CommandTemplate, FCommandArguments& OutArgs, FString& OutErrorMessage);
 
 	FAutocompletionRequest ResolveAutocompletionRequest(const FString& AutocompletionString) const;
-	
+
 	/**
 	 * returns autocompletions for a piece of text.
 	 * 
@@ -284,7 +302,7 @@ class UCommandExecutionWorldSubsystem : public UWorldSubsystem
 
 	UPROPERTY()
 	UCommandExecutor* Executor;
-	
+
 public:
 	UCommandExecutionWorldSubsystem()
 	{
@@ -292,12 +310,12 @@ public:
 		Executor->bAllowsParallelExecution = false;
 		Executor->bCanExecuteLatentCommands = true;
 	}
-	
+
 	UCommandExecutor* GetExecutor() const
 	{
 		return Executor;
 	}
-	
+
 	virtual void Deinitialize() override;
 };
 
@@ -305,7 +323,7 @@ UCLASS()
 class UGameConsoleInputSubsystem : public ULocalPlayerSubsystem
 {
 	GENERATED_BODY()
-	
+
 public:
 	virtual void PlayerControllerChanged(APlayerController* NewPlayerController) override;
 };

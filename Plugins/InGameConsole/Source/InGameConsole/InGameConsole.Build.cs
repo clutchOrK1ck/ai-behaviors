@@ -39,8 +39,7 @@ public class InGameConsole : ModuleRules
 				"Slate",
 				"SlateCore",
 				"InputCore",
-				"DeveloperSettings",
-				"UMG"
+				"DeveloperSettings"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

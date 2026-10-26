@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/c++,unrealengine,rider
 # Edit at https://www.toptal.com/developers/gitignore?templates=c++,unrealengine,rider
 
+# Local agent build logs, test reports, and temporary files (kept on E:).
+/.codex-temp/
+
 ### C++ ###
 # Prerequisites
 *.d
