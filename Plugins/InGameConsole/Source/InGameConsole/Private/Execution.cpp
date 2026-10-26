@@ -59,6 +59,9 @@ bool UCommandExecutor::Execute(const APlayerController* Requester,
                                ULatentConsoleCommand*& OutCommandHandle)
 {
 	OutCommandHandle = nullptr;
+
+	// do not allow invalid requester
+	check(Requester != nullptr);
 	
 	if (GetRunningCommands().Num() > 0 && !bAllowsParallelExecution)
 	{
@@ -73,40 +76,44 @@ bool UCommandExecutor::Execute(const APlayerController* Requester,
 	FCommandExecutionContext ExecutionContext;
 
 	ExecutionContext.Caller = Requester;
+	ExecutionContext.World = Requester->GetWorld();
 	ExecutionContext.Arguments = Args;
 	ExecutionContext.StdOut = StdOut;
 	ExecutionContext.StdErr = StdErr;
 
 	UConsoleCommandBase* CommandInstance = GetOrCreateCommandInstance(CommandClass);
-	CommandInstance->ExecuteWithContext(ExecutionContext);
+	CommandInstance->ExecuteWithContext(ExecutionContext); // TODO an uncarefully designed command can internally submit another command execution here and bypass parallel exeuction checks because the command is added to the list of running commands only below
 
 	if (const auto Latent = Cast<ULatentConsoleCommand>(CommandInstance))
 	{
 		// execution finished immediately
 		if (Latent->HasFinishedExecution())
 		{
-			if (!CommandInstance->IsPersistent())
+			if (!Latent->IsPersistent())
 			{
-				CommandInstance->MarkAsGarbage(); // destroy after execution
+				Latent->MarkAsGarbage(); // destroy after execution
 			}
 			
 			return true;
 		}
 		
 		RunningLatentCommands.Add(Latent);
+
+		if (!Latent->OnExecutionFinished.IsBoundToObject(this))
+		{
+			// listen to execution finish
+			Latent->OnExecutionFinished.AddUObject(
+				this,
+				&UCommandExecutor::HandleExecutionFinished,
+				Latent);
+
+			// listen to abortion
+			Latent->OnCommandAborted.AddUObject(
+				this,
+				&UCommandExecutor::HandleExecutionFinished,
+				Latent);
+		}
 		
-		// listen to execution finish
-		Latent->OnExecutionFinished.BindUObject(
-			this,
-			&UCommandExecutor::HandleExecutionFinished,
-			Latent);
-
-		// listen to abortion
-		Latent->OnCommandAborted.BindUObject(
-			this,
-			&UCommandExecutor::HandleExecutionFinished,
-			Latent);
-
 		OutCommandHandle = Latent;
 	}
 
@@ -115,7 +122,9 @@ bool UCommandExecutor::Execute(const APlayerController* Requester,
 
 void UCommandExecutor::Reset()
 {
-	for (auto RunningCommand : GetRunningCommands())
+	TArray<ULatentConsoleCommand*> RunningCommands = GetRunningCommands();
+	
+	for (auto RunningCommand : RunningCommands)
 	{
 		RunningCommand->Abort();
 	}

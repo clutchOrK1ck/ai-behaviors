@@ -20,7 +20,8 @@
  */
 struct FCommandExecutionContext
 {
-	const APlayerController* Caller;		// the player that requested command execution
+	TWeakObjectPtr<const APlayerController> Caller;		// the player that requested command execution, be careful because this may become invalid in a lot of edge cases (player disconnected, player controller destroyed before level finished play etc etc)
+	TWeakObjectPtr<UWorld> World;										// pointer to the world in which the command executes. this is reliable for non-persistent and world commands but absolutely unreliable for game-instance commands
 	FCommandArguments Arguments;
 	ITextPipe* StdOut;
 	ITextPipe* StdErr;
@@ -110,41 +111,63 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TSet<FFlagDescription> Flags;
+
+	template<typename ValueType, typename ParamType>
+	bool TryGetArgumentOrDefaultValue(FName ArgumentName, ValueType& Value) const
+	{
+		if (CurrentExecutionContext.Arguments.HasArgumentWithName(ArgumentName))
+		{
+			return CurrentExecutionContext.Arguments.Get<ValueType>(ArgumentName, Value);
+		}
+
+		if (const TConsoleParameter<ValueType>* ParamSpec = Cast<ParamType>(FindParameter(ArgumentName)))
+		{
+			if (ParamSpec->IsRequired())
+			{
+				return false;
+			}
+
+			Value = ParamSpec->GetDefaultValue();
+			return true;
+		}
+
+		return false;
+	}
 	
 	UFUNCTION(BlueprintPure)
 	bool GetIntArgument(FName ArgumentName, int32& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<int32>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<int32, UIntegerParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
 	bool GetStringArgument(FName ArgumentName, FString& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<FString>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<FString, UStringParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
 	bool GetBoolArgument(FName ArgumentName, bool& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<bool>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<bool, UBoolParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
 	bool GetRealArgument(FName ArgumentName, double& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<double>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<double, URealParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
 	bool GetVectorArgument(FName ArgumentName, FVector& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<FVector>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<FVector, UVectorParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
 	bool GetListArgument(FName ArgumentName, TArray<FString>& Value) const
 	{
-		return CurrentExecutionContext.Arguments.Get<TArray<FString>>(ArgumentName, Value);
+		return TryGetArgumentOrDefaultValue<TArray<FString>, UListParameter>(ArgumentName, Value);
 	}
 
 	UFUNCTION(BlueprintPure)
@@ -156,7 +179,7 @@ public:
 	UFUNCTION(BlueprintPure)
 	const APlayerController* GetCaller() const
 	{
-		return CurrentExecutionContext.Caller;
+		return CurrentExecutionContext.Caller.Get();
 	}
 
 	UFUNCTION(BlueprintCallable)
@@ -179,6 +202,13 @@ public:
 	
 	const UParameter* FindNamedParamByLongName(const FName& Name) const;
 	const UParameter* FindNamedParamByShortName(const FName& Name) const;
+
+	/**
+	 * find a parameter by its canonical name
+	 * @param Name parameter's canonical name (not its alias)
+	 * @return 
+	 */
+	const UParameter* FindParameter(const FName& Name) const;
 	
 	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext,)
 
@@ -232,8 +262,8 @@ class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 {
 	GENERATED_BODY()
 
-	DECLARE_DELEGATE(FOnAbortCommand);
-	DECLARE_DELEGATE(FOnExecutionFinished);
+	DECLARE_MULTICAST_DELEGATE(FOnAbortCommand);
+	DECLARE_MULTICAST_DELEGATE(FOnExecutionFinished);
 
 	/**
 	 * this command's input channel

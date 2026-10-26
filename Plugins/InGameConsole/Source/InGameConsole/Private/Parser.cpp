@@ -114,7 +114,7 @@ bool FCLIParser::ParseArguments(const TArray<FString>& InTokens, const UConsoleC
 	// remove the command name
 	Tokens = Tokens.RightChop(1);
 
-	// positional arguments
+	// positional parameters
 	const int NumPositionalArgs = Command->PositionalParameters.Num();
 
 	for (int i = 0; i < NumPositionalArgs; i++)
@@ -144,7 +144,7 @@ bool FCLIParser::ParseArguments(const TArray<FString>& InTokens, const UConsoleC
 		bool bIsParam = false;
 		bool bIsFlag = false;
 		const UParameter* ParamSpec;
-		const FFlagDescription* FlagSpec;
+		const FFlagDescription* FlagSpec = nullptr;
 
 		if (!DoesLookLikeArgName(Token))
 		{
@@ -179,7 +179,7 @@ bool FCLIParser::ParseArguments(const TArray<FString>& InTokens, const UConsoleC
 			}
 		} else if (bIsFlag)
 		{
-			OutArgs.AddFlag(Token.TrimChar('-').TrimChar('-'));
+			OutArgs.AddFlag(FlagSpec->Name.ToString());
 		}
 	}
 

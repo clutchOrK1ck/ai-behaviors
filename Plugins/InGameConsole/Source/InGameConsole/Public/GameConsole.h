@@ -159,6 +159,8 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 
 	void InitializeWidget();
 
+	void OnForegroundCommandFinished();
+	
 	void ProcessConsoleCommand(const APlayerController* Requester, const FString& Command);
 
 	/**
@@ -201,7 +203,6 @@ public:
 	 * this can result in command execution, communication with the currently running foreground command, or an error
 	 * @param Input 
 	 */
-	UFUNCTION(BlueprintCallable)
 	void ProcessConsoleInput(const FString& Input);
 
 	/**

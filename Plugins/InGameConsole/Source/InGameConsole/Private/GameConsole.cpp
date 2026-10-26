@@ -97,6 +97,11 @@ void UGameConsole::InitializeWidget()
 	}
 }
 
+void UGameConsole::OnForegroundCommandFinished()
+{
+	RunningInForeground.Reset();
+}
+
 void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, const FString& Command)
 {
 	FString ParsingError;
@@ -148,6 +153,19 @@ void UGameConsole::ProcessConsoleCommand(const APlayerController* Requester, con
 			if (CommandHandle)
 			{
 				RunningInForeground = CommandHandle;
+
+				// non-persistent commands get destroyed after execution finishes, so the foreground pointer becomes invalid
+				// but for persistent commands (level and world commands) we need to clear it
+				if (CommandHandle->IsPersistent() && !CommandHandle->OnExecutionFinished.IsBoundToObject(this))
+				{
+					RunningInForeground->OnExecutionFinished.AddUObject(
+						this,
+						&UGameConsole::OnForegroundCommandFinished);
+
+					RunningInForeground->OnCommandAborted.AddUObject(
+						this,
+						&UGameConsole::OnForegroundCommandFinished);
+				}
 			}
 		} else
 		{
@@ -266,6 +284,11 @@ void UGameConsole::Reset()
 	ExecutionHistory.Empty();
 	StdOut->Clear();
 	StdErr->Clear();
+
+	if (const auto CommandExecutionWorldSubsystem = GetWorld()->GetSubsystem<UCommandExecutionWorldSubsystem>())
+	{
+		CommandExecutionWorldSubsystem->GetExecutor()->Reset();
+	}
 }
 
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant) const
@@ -370,6 +393,12 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 	// check if the user is trying to auto-complete something that resembles a parameter or a flag name
 	if (FCLIName::Parse(TokenForAutocompletion, ParamOrFlagName))
 	{
+		// refuse to auto-complete short names because those are usually one char anyway
+		if (ParamOrFlagName.IsAlias())
+		{
+			return FAutocompletionRequest::INVALID;
+		}
+		
 		return FAutocompletionRequest::ParamName(ParamOrFlagName.GetName().ToString(), Command);
 	}
 
@@ -411,15 +440,22 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 		}
 	case ParameterName:
 		{
-			TArray<FName> ParameterAndFlagNames;
-			AutocompletionRequest.GetCommand()->GetParameterAndFlagNames(ParameterAndFlagNames);
+			// suggest autocompletions for *named* parameters and flags
+			TArray<FString> ParameterAndFlagNames;
 
-			TArray<FString> ParameterAndFlagNamesStr;
-			Algo::Transform(ParameterAndFlagNames, ParameterAndFlagNamesStr, [](const FName& Name) {return Name.ToString();});
+			for (const auto NamedParam : AutocompletionRequest.GetCommand()->NamedParameters)
+			{
+				ParameterAndFlagNames.Add(NamedParam->Name.ToString());
+			}
+
+			for (const auto Flag : AutocompletionRequest.GetCommand()->Flags)
+			{
+				ParameterAndFlagNames.Add(Flag.Name.ToString());
+			}
 		
 			return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(
 				AutocompletionRequest.GetValue(),
-				ParameterAndFlagNamesStr, AutoCompletions);
+				ParameterAndFlagNames, AutoCompletions);
 		}
 	case ParameterValue:
 		{
@@ -427,7 +463,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 
 			if (AutocompleteParam->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 			{
-				return Execute_RequestAutocompletions(AutocompleteParam, InString, AutoCompletions);
+				return Execute_RequestAutocompletions(AutocompleteParam, AutocompletionRequest.GetValue(), AutoCompletions);
 			}
 		}
 	}

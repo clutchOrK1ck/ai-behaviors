@@ -14,11 +14,12 @@ void ULatentConsoleCommand::FinishExecutionAndCleanUp(EOnLatentCommandExecutionE
 	// let the blueprint also handle execution finish
 	OnExecutionEnding(Reason);
 
-	if (IsPersistent()) // non-persistent commands are simply destroyed by the executor
+	if (IsPersistent()) // non-persistent commands are simply destroyed by the executor, for persistent commands we need to cancel the latent actions
 	{
-		if (CurrentExecutionContext.Caller) // TODO bad that this depends on the caller
+		// a world is passed to each command's execution, and if it's null, the latent action manager had been already destroyed anyway
+		if (CurrentExecutionContext.World.IsValid())
 		{
-			CurrentExecutionContext.Caller->GetWorld()->GetLatentActionManager().RemoveActionsForObject(this);
+			CurrentExecutionContext.World.Get()->GetLatentActionManager().RemoveActionsForObject(this);
 		}
 
 		UserInput->OnNewItem.Clear();
@@ -26,10 +27,10 @@ void ULatentConsoleCommand::FinishExecutionAndCleanUp(EOnLatentCommandExecutionE
 
 	if (Reason == EOnLatentCommandExecutionEndingReason::ExecutionFinished)
 	{
-		OnExecutionFinished.ExecuteIfBound(); // TODO this could be one delegate taking the enum
+		OnExecutionFinished.Broadcast(); // TODO this could be one delegate taking the enum
 	} else if (Reason == EOnLatentCommandExecutionEndingReason::ExecutionAborted)
 	{
-		OnCommandAborted.ExecuteIfBound();
+		OnCommandAborted.Broadcast();
 	}
 }
 
@@ -128,6 +129,24 @@ const UParameter* UConsoleCommandBase::FindNamedParamByShortName(const FName& Na
 	return nullptr;
 }
 
+const UParameter* UConsoleCommandBase::FindParameter(const FName& Name) const
+{
+	if (const auto Positional = PositionalParameters.FindByPredicate([Name](const UParameter* Parameter)
+	{
+		return Parameter->Name.IsEqual(Name);
+	}))
+	{
+		return Positional->Get();
+	}
+
+	if (const auto Named = FindNamedParamByLongName(Name))
+	{
+		return Named;
+	}
+
+	return nullptr;
+}
+
 bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const
 {
 	// note: FCommandArguments must contain values for ALL argumnets, also optional ones; they must be populated by the parser
@@ -135,10 +154,10 @@ bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FSt
 	// -- missing parameters
 	auto PredicateMissing = [&InArgs](const UParameter* Parameter)
 	{
-		return !InArgs.HasArgumentWithName(Parameter->Name);
+		return Parameter->bRequired && !InArgs.HasArgumentWithName(Parameter->Name);
 	};
 	
-	TArray<UParameter*> MissingParams = PositionalParameters.FilterByPredicate(PredicateMissing);
+	auto MissingParams = PositionalParameters.FilterByPredicate(PredicateMissing);
 	MissingParams.Append(NamedParameters.FilterByPredicate(PredicateMissing));
 
 	if (MissingParams.Num() > 0)
@@ -156,7 +175,15 @@ bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FSt
 	// -- unknown parameters or flags
 	auto PredicateUnknown = [this](const FName& Name)
 	{
-		return FindNamedParamByLongName(Name) == nullptr; // TODO flags?
+		return FindNamedParamByLongName(Name) == nullptr &&
+			!PositionalParameters.ContainsByPredicate([&Name](const UParameter* Parameter)
+			{
+				return Parameter->Name.IsEqual(Name);
+			}) &&
+			!Flags.Array().ContainsByPredicate([&Name](const FFlagDescription& Flag)
+			{
+				return Flag.Name.IsEqual(Name);
+			});
 	};
 
 	TArray<FName> AllNames;
