@@ -68,6 +68,85 @@ enum class ECommandLifeTime : uint8
 	Game			UMETA(ToolTip = "A command instance is created on first invocation and persists for the duration of the game instance")
 };
 
+UENUM(BlueprintType)
+enum class EParameterValueType : uint8
+{
+	Integer,
+	Real,
+	String,
+	Vector,
+	List,
+	Boolean
+};
+
+USTRUCT(BlueprintType)
+struct FCommandParameterDefinition
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	FName Name;
+
+	UPROPERTY(BlueprintReadOnly)
+	FName Alias;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString Description;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bRequired;
+	
+	UPROPERTY(BlueprintReadOnly)
+	EParameterValueType ValueType = EParameterValueType::Boolean;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString DefaultValue;
+
+	UPROPERTY(BlueprintReadOnly, meta=(
+		ToolTip = "A piece of text describing how the parameter value is validated"))
+	FString ValidationInfo;
+};
+
+/**
+ * a blueprint-facing command definition, performs solely informative role
+ */
+USTRUCT(BlueprintType)
+struct FCommandDefinition
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	FName Name = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString Category;
+	
+	UPROPERTY(BlueprintReadOnly)
+	FString Description;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bLatent = false;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool bServer = false;
+
+	UPROPERTY(BlueprintReadOnly)
+	ECommandLifeTime LifecycleType = ECommandLifeTime::Invocation;
+
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FCommandParameterDefinition> PositionalParameters;
+
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FCommandParameterDefinition> NamedParameters;
+
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FFlagDescription> Flags;
+
+	bool IsFilled() const
+	{
+		return Name != NAME_None;
+	}
+};
 
 /**
  * a command executable from the game console. Console commands are async by default. They cannot tick but they can
@@ -81,9 +160,16 @@ class INGAMECONSOLE_API UConsoleCommandBase : public UObject
 {
 	GENERATED_BODY()
 
+	FCommandDefinition CommandDefinition;
+
 protected:
 	int32 ExitCode = -1; // command exit code
 	FCommandExecutionContext CurrentExecutionContext;
+	
+	FCommandParameterDefinition MakeParameterDefinition(const UParameter* Parameter) const;
+	void FillParameterAndFlagDefinitions(FCommandDefinition& OutCommandDefinition) const;
+	
+	virtual void GenerateCommandDefinition(FCommandDefinition& OutCommandDefinition) const;
 	
 public:
 
@@ -94,6 +180,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(
 		ToolTip = "Command category, separate subcategories with a pipe"))
 	FString Category;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(MultiLine=true))
+	FString Description;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	ECommandLifeTime LifecycleType;
@@ -112,6 +201,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TSet<FFlagDescription> Flags;
 
+	virtual UWorld* GetWorld() const override;
+	
 	template<typename ValueType, typename ParamType>
 	bool TryGetArgumentOrDefaultValue(FName ArgumentName, ValueType& Value) const
 	{
@@ -182,6 +273,12 @@ public:
 		return CurrentExecutionContext.Caller.Get();
 	}
 
+	UFUNCTION(BlueprintPure)
+	bool IsOptionalArgumentPresent(FName ArgName) const
+	{
+		return CurrentExecutionContext.Arguments.HasArgumentWithName(ArgName);
+	}
+
 	UFUNCTION(BlueprintCallable)
 	void WriteMessageToStdErr(const FString& Message) const
 	{
@@ -210,6 +307,8 @@ public:
 	 */
 	const UParameter* FindParameter(const FName& Name) const;
 	
+	const FCommandDefinition& GetCommandDefinition();
+	
 	virtual void ExecuteWithContext(const FCommandExecutionContext& Context) PURE_VIRTUAL(UConsoleCommandBase::ExecuteWithContext,)
 
 	/**
@@ -226,10 +325,12 @@ public:
 		ToolTip = "Override this to provide parameter allowed values dynamically"))
 	void GetAllowedValues(const FName& ParamName, TSet<FString>& OutValues) const;
 
-	UFUNCTION(BlueprintImplementableEvent, meta=(
+	UFUNCTION(BlueprintNativeEvent, meta=(
 		ToolTip = "Whether this command makes sense in current context. The logic can depend on the loaded level, game mode, presence of certain actors, player controller class etc. etc."))
 	bool IsRelevantInCurrentContext() const;
 
+	bool IsRelevantInCurrentContext_Implementation() const;
+	
 	/**
 	 * a way for the command to check if a parameter value is in the allowed set
 	 *
@@ -256,8 +357,7 @@ enum class EOnLatentCommandExecutionEndingReason : uint8
 	ExecutionAborted
 };
 
-UCLASS(Blueprintable, meta=(ShowWorldContextPin,
-	ToolTip = "A latent console command can execute over multiple frames and must exist finish execution with its 'Finish' method"))
+UCLASS(Blueprintable, meta=(ToolTip = "A latent console command can execute over multiple frames and must exist finish execution with its 'Finish' method"))
 class INGAMECONSOLE_API ULatentConsoleCommand : public UConsoleCommandBase
 {
 	GENERATED_BODY()
@@ -287,6 +387,8 @@ protected:
 	 */
 	UFUNCTION(BlueprintImplementableEvent)
 	void ExecuteImpl();
+
+	virtual void GenerateCommandDefinition(FCommandDefinition& OutCommandDefinition) const override;
 
 public:
 	FOnExecutionFinished OnExecutionFinished;
@@ -338,8 +440,7 @@ public:
 	}
 };
 
-UCLASS(Blueprintable, meta=(ShowWorldContextPin,
-	ToolTip = "A console command that finishes execution its logic within a single frame"))
+UCLASS(Blueprintable, meta=(ToolTip = "A console command that finishes execution its logic within a single frame"))
 class INGAMECONSOLE_API UConsoleCommand : public UConsoleCommandBase
 {
 	GENERATED_BODY()

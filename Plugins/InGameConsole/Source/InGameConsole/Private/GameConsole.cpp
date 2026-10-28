@@ -2,6 +2,7 @@
 
 #include "GameConsole.h"
 #include "ConsoleCommandBase.h"
+#include "LocalizationDescriptor.h"
 #include "RemoteExecutionComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameViewportClient.h"
@@ -100,17 +101,13 @@ void UGameConsoleInputSubsystem::PlayerControllerChanged(APlayerController* NewP
 	}
 }
 
-UConsoleCommandBase* UGameConsole::FindCommandTemplate(const FName& CommandName, bool ContextRelevant) const
+UConsoleCommandBase* UGameConsole::GetCommandTemplate(const FName& CommandName, bool ContextRelevant) const
 {
-	for (TSubclassOf<UConsoleCommandBase> CommandCls : Commands)
+	for (auto ConsoleCommand : CommandTemplates)
 	{
-		UConsoleCommandBase* CDO = CommandCls.GetDefaultObject();
-		if (CDO->CommandName.IsEqual(CommandName))
+		if (ConsoleCommand->CommandName.IsEqual(CommandName) && ConsoleCommand->IsRelevantInCurrentContext())
 		{
-			if (!ContextRelevant || CDO->IsRelevantInCurrentContext())
-			{
-				return CDO;
-			}
+			return ConsoleCommand;
 		}
 	}
 
@@ -408,7 +405,47 @@ void UGameConsole::ProcessConsoleInput(const FString& Input)
 
 void UGameConsole::AddCommandSet(const UConsoleCommandSet* CommandSet)
 {
-	Commands.Append(CommandSet->Commands);
+	for (const auto& CommandClass : CommandSet->Commands)
+	{
+		if (!CommandTemplates.ContainsByPredicate([&CommandClass](const UConsoleCommandBase* Command)
+		{
+			return Command->GetClass() == CommandClass.Get();
+		}))
+		{
+			const auto Template = NewObject<UConsoleCommandBase>(this, CommandClass.Get());
+			CommandTemplates.Add(Template);
+		}
+	}
+}
+
+TArray<FCommandDefinition> UGameConsole::GetCommandDefinitions() const
+{
+	TArray<FCommandDefinition> Definitions;
+
+	for (const auto Command : CommandTemplates)
+	{
+		if (Command->IsRelevantInCurrentContext())
+		{
+			Definitions.Add(Command->GetCommandDefinition());
+		}
+	}
+
+	return Definitions;
+}
+
+void UGameConsole::FindCommandDefinition(FName CommandName, FCommandDefinition& Definition, bool& Found) const
+{
+	Found = false;
+	
+	for (const auto& Definition_ : GetCommandDefinitions())
+	{
+		if (Definition_.Name.IsEqual(CommandName))
+		{
+			Found = true;
+			Definition = Definition_;
+			return;
+		}
+	}
 }
 
 bool UGameConsole::LookUpExecutionHistoryAtOffset(const int32 Offset, FString& HistoricalCommand) const
@@ -452,11 +489,11 @@ void UGameConsole::Reset()
 
 void UGameConsole::GetKnownCommandNames(TArray<FString>& OutCommandNames, bool bContextRelevant) const
 {
-	for (const TSubclassOf<UConsoleCommandBase>& CommandCls : Commands)
+	for (const auto Command : CommandTemplates)
 	{
-		if (!bContextRelevant || CommandCls.GetDefaultObject()->IsRelevantInCurrentContext())
+		if (!bContextRelevant || Command->IsRelevantInCurrentContext())
 		{
-			OutCommandNames.Add(CommandCls.GetDefaultObject()->CommandName.ToString());
+			OutCommandNames.Add(Command->CommandName.ToString());
 		}
 	}
 }
@@ -470,7 +507,7 @@ bool UGameConsole::ParseCommand(const FString& Command, UConsoleCommandBase*& Co
 		return false;
 	}
 
-	const auto ExistingCommand = FindCommandTemplate(FName(Tokenizer.GetTokens()[0]));
+	const auto ExistingCommand = GetCommandTemplate(FName(Tokenizer.GetTokens()[0]));
 	if (!ExistingCommand)
 	{
 		OutErrorMessage = FString::Format(TEXT("Command with name {0} does not exist"), {Tokenizer.GetTokens()[0]});
@@ -511,7 +548,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 	Tokens = Tokens.RightChop(1);
 
 	// the user is trying to auto-complete parameter name or parameter value - in this case though we first need to know which command
-	UConsoleCommandBase* Command = FindCommandTemplate(CommandName);
+	UConsoleCommandBase* Command = GetCommandTemplate(CommandName);
 
 	if (!Command)
 	{
@@ -622,6 +659,25 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 		{
 			const auto AutocompleteParam = AutocompletionRequest.GetParameter();
 
+			// dynamically provided string values
+			if (AutocompleteParam->IsA<UStringParameter>() || AutocompleteParam->IsA<UListParameter>())
+			{
+				FStringValidationSettings Validation = AutocompleteParam->IsA<UStringParameter>()
+					                                        ? Cast<UStringParameter>(AutocompleteParam)->Validation
+					                                        : Cast<UListParameter>(AutocompleteParam)->Validation;
+
+				if (Validation.ValidationType == AllowedValueSet && Validation.bProvideAllowedValuesDynamically)
+				{
+					TSet<FString> AllowedValues;
+
+					AutocompletionRequest.GetCommand()->GetAllowedValues(AutocompleteParam->Name, AllowedValues);
+
+					return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(
+						AutocompletionRequest.GetValue(),
+						AllowedValues.Array(), AutoCompletions);
+				}
+			}
+			
 			if (AutocompleteParam->GetClass()->ImplementsInterface(UAutoCompletionProvider::StaticClass()))
 			{
 				return Execute_RequestAutocompletions(AutocompleteParam, AutocompletionRequest.GetValue(), AutoCompletions);

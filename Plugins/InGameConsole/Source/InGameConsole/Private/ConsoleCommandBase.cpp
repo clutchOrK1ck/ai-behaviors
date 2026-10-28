@@ -3,6 +3,7 @@
 
 #include "ConsoleCommandBase.h"
 
+#include "Execution.h"
 #include "Algo/AllOf.h"
 #include "Algo/AnyOf.h"
 
@@ -32,6 +33,12 @@ void ULatentConsoleCommand::FinishExecutionAndCleanUp(EOnLatentCommandExecutionE
 	{
 		OnCommandAborted.Broadcast();
 	}
+}
+
+void ULatentConsoleCommand::GenerateCommandDefinition(FCommandDefinition& OutCommandDefinition) const
+{
+	Super::GenerateCommandDefinition(OutCommandDefinition);
+	OutCommandDefinition.bLatent = true;
 }
 
 void ULatentConsoleCommand::ExecuteWithContext(const FCommandExecutionContext& Context)
@@ -147,6 +154,177 @@ const UParameter* UConsoleCommandBase::FindParameter(const FName& Name) const
 	return nullptr;
 }
 
+FString ToString(const FIntegerValidationSettings& ValidationSettings)
+{
+	if (ValidationSettings.MinValue == 0 && ValidationSettings.MaxValue == MAX_int32)
+	{
+		return "Restricted to positive integer values";
+	}
+
+	if (ValidationSettings.MaxValue == 0 && ValidationSettings.MinValue == MIN_int32)
+	{
+		return "Restricted to negative integer values";
+	}
+	
+	if (ValidationSettings.bRestrictRange)
+	{
+		return FString::Format(TEXT("Restricted to integer values in range: [{0}, {1}]"),
+			{LexToString(ValidationSettings.MinValue), LexToString(ValidationSettings.MaxValue)});
+	}
+
+	return "";
+}
+
+FString ToString(const FStringValidationSettings& ValidationSettings)
+{
+	if (ValidationSettings.ValidationType == AllowedValueSet && ValidationSettings.bProvideAllowedValuesDynamically)
+	{
+		return "This argument is restricted to a set of allowed values. Use auto-completion to check"; // TODO at this point we have no reference to the command
+	}
+	
+	switch(ValidationSettings.ValidationType)
+	{
+	case Regex:
+		return FString::Format(TEXT("Supplied values must match the regex expression: {0}"), {ValidationSettings.Regex});
+	case AllowedValueSet:
+		{
+			auto AllowedValues = MakeArrayView(ValidationSettings.AllowedValues.Array());
+
+			AllowedValues = AllowedValues.LeftChop(10); // TODO this probably must be configurable
+		
+			return FString::Format(TEXT("Supplied values must be in the set: \\{{0}\\}"),
+				{FString::Join(AllowedValues, TEXT(" "))});
+		}
+	case None:
+	default:
+		return "";
+	}
+}
+
+FString ToString(const FRealValidationSettings& ValidationSettings)
+{
+	if (ValidationSettings.bRestrictRange)
+	{
+		// only positive values
+		if (FMath::IsNearlyZero(ValidationSettings.MinValue) && FMath::IsNearlyEqual(ValidationSettings.MaxValue, MAX_dbl, 1.))
+		{
+			return "Restricted to positive real values";
+		}
+
+		// only negative values
+		if (FMath::IsNearlyZero(ValidationSettings.MaxValue) && FMath::IsNearlyEqual(ValidationSettings.MinValue, MIN_dbl, 1.))
+		{
+			return "Restricted to negative real values";
+		}
+		
+		return FString::Format(TEXT("Restricted to real values in range: [{0}, {1}]"), {
+			                       LexToString(ValidationSettings.MinValue),
+			                       LexToString(ValidationSettings.MaxValue)
+		                       });
+	}
+
+	return "";
+}
+
+FCommandParameterDefinition UConsoleCommandBase::MakeParameterDefinition(const UParameter* Parameter) const
+{
+	FCommandParameterDefinition Result;
+
+	Result.Name = Parameter->Name;
+	Result.Alias = Parameter->ShortName;
+	Result.Description = Parameter->Description;
+	Result.bRequired = Parameter->bRequired;
+
+	if (const auto BoolParam = Cast<UBoolParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::Boolean;
+		Result.DefaultValue = LexToString(BoolParam->GetDefaultValue());
+	} else if (const auto IntParam = Cast<UIntegerParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::Integer;
+		Result.DefaultValue = LexToString(IntParam->GetDefaultValue());
+		Result.ValidationInfo = ToString(IntParam->Validation);
+	} else if (const auto StringParam = Cast<UStringParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::String;
+		Result.DefaultValue = LexToString(StringParam->DefaultValue);
+		Result.ValidationInfo = ToString(StringParam->Validation);
+	} else if (const auto RealParam = Cast<URealParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::Real;
+		Result.DefaultValue = LexToString(RealParam->GetDefaultValue());
+		Result.ValidationInfo = ToString(RealParam->Validation);
+	} else if (const auto VectorParam = Cast<UVectorParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::Vector;
+		Result.DefaultValue = VectorParam->GetDefaultValue().ToString();
+	} else if (const auto ListParam = Cast<UListParameter>(Parameter))
+	{
+		Result.ValueType = EParameterValueType::List;
+		Result.DefaultValue = FString("[") + FString::Join(
+			ListParam->GetDefaultValue(), TEXT(" ")) + "]";
+		Result.ValidationInfo = ToString(ListParam->Validation);
+	}
+
+	return Result;
+}
+
+void UConsoleCommandBase::FillParameterAndFlagDefinitions(FCommandDefinition& OutCommandDefinition) const
+{
+	for (const UParameter* Parameter : PositionalParameters)
+	{
+		OutCommandDefinition.PositionalParameters.Add(MakeParameterDefinition(Parameter));
+	}
+
+	for (const UParameter* Parameter : NamedParameters)
+	{
+		OutCommandDefinition.NamedParameters.Add(MakeParameterDefinition(Parameter));
+	}
+
+	for (const auto& Flag : Flags)
+	{
+		OutCommandDefinition.Flags.Add(Flag);
+	}
+}
+
+const FCommandDefinition& UConsoleCommandBase::GetCommandDefinition()
+{
+	if (!CommandDefinition.IsFilled())
+	{
+		GenerateCommandDefinition(CommandDefinition);
+	}
+
+	return CommandDefinition;
+}
+
+void UConsoleCommandBase::GenerateCommandDefinition(FCommandDefinition& OutCommandDefinition) const
+{
+	OutCommandDefinition.Name = this->CommandName;
+	OutCommandDefinition.Category = this->Category;
+	OutCommandDefinition.Description = this->Description;
+	OutCommandDefinition.bServer = this->bIsServerCommand;
+	OutCommandDefinition.LifecycleType = this->LifecycleType;
+	OutCommandDefinition.bLatent = false;
+
+	FillParameterAndFlagDefinitions(OutCommandDefinition);
+}
+
+UWorld* UConsoleCommandBase::GetWorld() const
+{
+	if (IsTemplate() || !GetOuter())
+	{
+		return nullptr;
+	}
+	
+	// could be the command is executing and has a valid caller - return its world then
+	if (CurrentExecutionContext.Caller.IsValid())
+	{
+		return CurrentExecutionContext.Caller.Get()->GetWorld();
+	}
+	
+	return GetOuter()->GetWorld();
+}
+
 bool UConsoleCommandBase::ValidateArguments(const FCommandArguments& InArgs, FString& OutError) const
 {
 	// note: FCommandArguments must contain values for ALL argumnets, also optional ones; they must be populated by the parser
@@ -221,6 +399,11 @@ void UConsoleCommandBase::GetParameterAndFlagNames(TArray<FName>& Names) const
 	{
 		Names.Add(Flag.Name);
 	}
+}
+
+bool UConsoleCommandBase::IsRelevantInCurrentContext_Implementation() const
+{
+	return true;
 }
 
 bool UConsoleCommandBase::CheckParamValueIsInAllowedSet(const FName& LongParamName, const FString& Value) const

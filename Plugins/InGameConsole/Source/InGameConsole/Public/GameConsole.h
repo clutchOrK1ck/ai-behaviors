@@ -9,7 +9,6 @@
 #include "Parser.h"
 #include "Execution.h"
 #include "InputCoreTypes.h"
-#include "Net/OnlineEngineInterface.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameConsole.generated.h"
 
@@ -145,10 +144,10 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	TWeakObjectPtr<APlayerController> UIController;
 
 	void AppendOutput(const FString& Text, EConsoleLineType Type);
-
-	// a set of all commands known to this console
+		
+	// an array of command templates that are used for parsing, parameter validation etc. (NOT for execution)
 	UPROPERTY()
-	TSet<TSubclassOf<UConsoleCommandBase>> Commands;
+	TArray<UConsoleCommandBase*> CommandTemplates;
 
 	// history of executed commands
 	TArray<FString> ExecutionHistory;
@@ -161,7 +160,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	 * @param ContextRelevant return only if the command is relative in current context
 	 * @return 
 	 */
-	UConsoleCommandBase* FindCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
+	UConsoleCommandBase* GetCommandTemplate(const FName& CommandName, bool ContextRelevant = true) const;
 
 	void InitializeInputComponent();
 
@@ -230,6 +229,12 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void AddCommandSet(const UConsoleCommandSet* CommandSet);
 
+	UFUNCTION(BlueprintPure)
+	TArray<FCommandDefinition> GetCommandDefinitions() const;
+
+	UFUNCTION(BlueprintCallable)
+	void FindCommandDefinition(FName CommandName, FCommandDefinition& Definition, bool& Found) const;
+	
 	/**
 	 * look up the executed command in the execution history
 	 *
