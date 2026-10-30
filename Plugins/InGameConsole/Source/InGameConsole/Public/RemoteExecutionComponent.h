@@ -19,15 +19,15 @@ enum class EExecutionAuthorityType : uint8
 /**
  * authority to execute any or one particular command
  */
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FExecutionAuthority
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	EExecutionAuthorityType Type;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	FString Key; // this can mean different things depending on the authority type
 };
 
@@ -86,6 +86,9 @@ public:
 	APlayerController* GetOwningController() const;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(BlueprintCallable, Category = "Remote Command Execution")
+	void GetExecutionRights(TArray<FExecutionAuthority>& Rights) const;
 	
 	UFUNCTION(Server, Reliable)
 	void ExecuteCommandOnServer(const FString& Command);
@@ -96,7 +99,7 @@ public:
 	/**
 	 * ask server for authority to execute all commands/particular command/commands from particular category
 	 */
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void RequestServerExecutionAuthority(EExecutionAuthorityType Type, const FString& Key);
 };
 
@@ -106,6 +109,8 @@ enum class EProcessRequestAction : uint8
 	Allow,
 	Deny
 };
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FDoWithRequestDelegate, const FExecutionAuthorityRequest&, Request);
 
 /**
  * a server-only subsystem for managing remote execution authority requests
@@ -119,6 +124,7 @@ class URemoteExecutionSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
+	int NumPendingRequests = 0;
 	TQueue<FExecutionAuthorityRequest> PendingRequests;
 
 public:
@@ -134,15 +140,24 @@ public:
 	void GrantAuthority(const APlayerController* Player, EExecutionAuthorityType Type, FString Key);
 
 	UFUNCTION(BlueprintCallable)
-	bool GetOldestRequest(FExecutionAuthorityRequest& Request);
+	bool PeekNextRequest(FExecutionAuthorityRequest& Request);
 
+	UFUNCTION(BlueprintPure)
+	bool HasPendingRequests() const
+	{
+		return !PendingRequests.IsEmpty();
+	}
+	
 	/**
 	 * 
 	 * @param Action allow or deny a request
 	 */
 	UFUNCTION(BlueprintCallable)
-	void ProcessOldestRequest(EProcessRequestAction Action);
+	void ProcessNextRequest(EProcessRequestAction Action);
 	
 	UFUNCTION(BlueprintCallable)
 	void PurgeAllRequests();
+
+	UFUNCTION(BlueprintPure)
+	int GetNumPendingRequests();
 };

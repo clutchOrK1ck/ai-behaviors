@@ -291,6 +291,13 @@ public:
 		CurrentExecutionContext.StdOut->Write(Message);
 	}
 
+	UFUNCTION(BlueprintPure, meta=(
+		ToolTip = "True if the command is running on dedicated or listen server, or in a standalone game"))
+	bool ExecutingOnServer() const
+	{
+		return GetWorld() && GetWorld()->GetNetMode() != NM_Client;
+	}
+
 	// persistent commands exist for the game instance's duration
 	bool IsPersistent() const
 	{

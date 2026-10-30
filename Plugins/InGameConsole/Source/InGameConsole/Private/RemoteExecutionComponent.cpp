@@ -94,6 +94,14 @@ void URemoteExecutionComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 		COND_OwnerOnly);
 }
 
+void URemoteExecutionComponent::GetExecutionRights(TArray<FExecutionAuthority>& Rights) const
+{
+	for (const auto& ExecutionAuthority : ExecutionAuthorityList)
+	{
+		Rights.Add(ExecutionAuthority);
+	}
+}
+
 void URemoteExecutionComponent::ExecuteCommandOnServer_Implementation(const FString& Command)
 {
 	// parse command on server using server's console
@@ -155,6 +163,7 @@ bool URemoteExecutionSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 void URemoteExecutionSubsystem::AddRemoteExecutionAuthorityRequest(const FExecutionAuthorityRequest& Request)
 {
 	PendingRequests.Enqueue(Request);
+	NumPendingRequests++;
 }
 
 void URemoteExecutionSubsystem::GrantAuthority(const APlayerController* Player, EExecutionAuthorityType Type, FString Key)
@@ -173,7 +182,7 @@ void URemoteExecutionSubsystem::GrantAuthority(const APlayerController* Player, 
 	Player->FindComponentByClass<URemoteExecutionComponent>()->ExecutionAuthorityList.Add(NewAuthority);
 }
 
-bool URemoteExecutionSubsystem::GetOldestRequest(FExecutionAuthorityRequest& Request)
+bool URemoteExecutionSubsystem::PeekNextRequest(FExecutionAuthorityRequest& Request)
 {
 	if (FExecutionAuthorityRequest* RequestPtr = PendingRequests.Peek())
 	{
@@ -184,7 +193,7 @@ bool URemoteExecutionSubsystem::GetOldestRequest(FExecutionAuthorityRequest& Req
 	return false;
 }
 
-void URemoteExecutionSubsystem::ProcessOldestRequest(EProcessRequestAction Action)
+void URemoteExecutionSubsystem::ProcessNextRequest(EProcessRequestAction Action)
 {
 	if (PendingRequests.IsEmpty())
 	{
@@ -193,23 +202,27 @@ void URemoteExecutionSubsystem::ProcessOldestRequest(EProcessRequestAction Actio
 
 	FExecutionAuthorityRequest Request;
 	PendingRequests.Dequeue(Request);
+	NumPendingRequests--;
 
 	if (!Request.Requester.IsValid())
 	{
 		return;
 	}
 	
-	if (Action == EProcessRequestAction::Deny)
+	if (Action == EProcessRequestAction::Allow)
 	{
-		return;
+		GrantAuthority(Request.Requester.Get(), Request.Type, Request.Key);
 	}
-
-	GrantAuthority(Request.Requester.Get(), Request.Type, Request.Key);
 }
 
 void URemoteExecutionSubsystem::PurgeAllRequests()
 {
 	PendingRequests.Empty();
+}
+
+int URemoteExecutionSubsystem::GetNumPendingRequests()
+{
+	return NumPendingRequests;
 }
 
 
