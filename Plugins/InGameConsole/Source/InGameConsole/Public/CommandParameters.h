@@ -258,7 +258,7 @@ public:
 		return Name;
 	}
 
-	virtual bool RequestAutocompletions_Implementation(const FString& String, TSet<FString>& AutoCompletions) const override;
+	virtual bool RequestAutocompletions_Implementation(const FString& String, TSet<FAutocompletion>& AutoCompletions) const override;
 };
 
 UCLASS(BlueprintType, EditInlineNew, AutoExpandCategories=("Parameter"))
@@ -291,7 +291,7 @@ public:
 		return Name;
 	}
 
-	virtual bool RequestAutocompletions_Implementation(const FString& String, TSet<FString>& AutoCompletions) const override;
+	virtual bool RequestAutocompletions_Implementation(const FString& String, TSet<FAutocompletion>& AutoCompletions) const override;
 };
 
 UCLASS(BlueprintType, EditInlineNew)

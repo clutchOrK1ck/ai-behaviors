@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "ConsoleOutput.h"
+#include "AutoCompletionProvider.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Views/SListView.h"
@@ -14,7 +15,7 @@ public:
 
 	int32 Caret() const;
 
-	float CaretX() const;
+	float TextPositionX(int32 Offset) const;
 };
 
 class SScrollBox;
@@ -51,9 +52,9 @@ private:
 	TSharedPtr<SConsoleEditableText> Input;
 	TSharedPtr<SScrollBox> OutputScroll;
 	TSharedPtr<SVerticalBox> OutputBox;
-	TSharedPtr<SListView<TSharedPtr<FString>>> CompletionList;
+	TSharedPtr<SListView<TSharedPtr<FAutocompletion>>> CompletionList;
 
-	TArray<TSharedPtr<FString>> Completions;
+	TArray<TSharedPtr<FAutocompletion>> Completions;
 	FString CompletionSource;
 	int32 CompletionCaret = 0;
 	int32 SelectedCompletion = 0;
@@ -87,7 +88,7 @@ private:
 
 	void MoveCompletion(int32 Direction);
 
-	TSharedRef<ITableRow> MakeCompletionRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& Owner);
+	TSharedRef<ITableRow> MakeCompletionRow(TSharedPtr<FAutocompletion> Item, const TSharedRef<STableViewBase>& Owner);
 
 	/**
 	 * text to put on the left of the text input (for example, '>')

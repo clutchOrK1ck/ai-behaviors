@@ -298,7 +298,7 @@ public:
 	 * @return 
 	 */
 	virtual bool
-	RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const override;
+	RequestAutocompletions_Implementation(const FString& InString, TSet<FAutocompletion>& AutoCompletions) const override;
 
 	/**
 	 * suggest auto-completions for a command and a caret position
@@ -309,7 +309,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	bool SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition,
-	                            TSet<FString>& AutoCompletions) const;
+	                            TSet<FAutocompletion>& AutoCompletions) const;
 };
 
 UCLASS()

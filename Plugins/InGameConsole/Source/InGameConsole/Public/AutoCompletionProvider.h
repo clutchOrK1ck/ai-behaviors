@@ -7,6 +7,29 @@
 #include "AutoCompletionProvider.generated.h"
 
 
+USTRUCT(BlueprintType)
+struct FAutocompletion
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite)
+	FString Root; // the original word autocompletion has been requested for
+
+	UPROPERTY(BlueprintReadWrite)
+	FString SuggestedCompletion; // the full suggested completion (we cannot rely only on suffix because an auto-completion might introduce case changes)
+
+	bool operator==(const FAutocompletion& Other) const
+	{
+		return Root.Equals(Other.Root, ESearchCase::CaseSensitive)
+			&& SuggestedCompletion.Equals(Other.SuggestedCompletion, ESearchCase::CaseSensitive);
+	}
+
+	friend uint32 GetTypeHash(const FAutocompletion& Completion)
+	{
+		return HashCombine(GetTypeHash(Completion.Root), GetTypeHash(Completion.SuggestedCompletion));
+	}
+};
+
 UINTERFACE(meta=(
 	ToolTip = "This interface can be implemented by (latent) console commands that support their own sub-command set"))
 class UAutoCompletionProvider : public UInterface
@@ -22,7 +45,7 @@ class INGAMECONSOLE_API IAutoCompletionProvider
 public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, meta=(
 		ToolTip = "Returns autocompletions for a string"))
-	bool RequestAutocompletions(const FString& String, TSet<FString>& AutoCompletions) const;
+	bool RequestAutocompletions(const FString& String, TSet<FAutocompletion>& AutoCompletions) const;
 };
 
 UCLASS(BlueprintType)
@@ -36,5 +59,5 @@ public:
 		"Return autocompletions by comparing the string to auto-complete with the starting characters of each option in the list"
 	))
 	static bool GetAutoCompletionsBySimpleMatch(const FString& InToAutocomplete, const TArray<FString>& Options,
-	                                            TSet<FString>& AutoCompletions);
+	                                            TSet<FAutocompletion>& AutoCompletions, bool bIgnoreCase = true);
 };

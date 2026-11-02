@@ -46,15 +46,27 @@ bool FGameConsoleSlateTest::RunTest(const FString&)
 	View->SetInput(TEXT("he --count 2"), 2);
 	View->CompletionSource = TEXT("he --count 2");
 	View->CompletionCaret = 2;
-	View->Completions.Add(MakeShared<FString>(TEXT("lp")));
+	View->Completions.Add(MakeShared<FAutocompletion>(TEXT("he"), TEXT("help")));
 	View->SelectedCompletion = 0;
 	View->AcceptCompletion();
 	TestEqual(TEXT("Completion inserts at the caret"), View->Input->GetText().ToString(), FString(TEXT("help --count 2")));
 	TestEqual(TEXT("Caret follows the insertion"), View->Input->Caret(), 4);
 	TestTrue(TEXT("Accepted completion dismisses the popup"), View->Completions.IsEmpty());
 
-	View->Completions.Add(MakeShared<FString>(TEXT("one")));
-	View->Completions.Add(MakeShared<FString>(TEXT("two")));
+	// Replace just the completed value, including case changes, and preserve surrounding input.
+	View->SetInput(TEXT("test --mode waLK --count 2"), 16);
+	View->CompletionSource = TEXT("test --mode waLK --count 2");
+	View->CompletionCaret = 16;
+	View->Completions.Add(MakeShared<FAutocompletion>(TEXT("waLK"), TEXT("Walking")));
+	View->SelectedCompletion = 0;
+	View->AcceptCompletion();
+	TestEqual(TEXT("Completion replaces only the root"), View->Input->GetText().ToString(),
+		FString(TEXT("test --mode Walking --count 2")));
+	TestEqual(TEXT("Caret follows the replacement"), View->Input->Caret(), 19);
+	TestTrue(TEXT("Token anchor precedes the caret"), View->Input->TextPositionX(12) < View->Input->TextPositionX(19));
+
+	View->Completions.Add(MakeShared<FAutocompletion>(TEXT(""), TEXT("one")));
+	View->Completions.Add(MakeShared<FAutocompletion>(TEXT(""), TEXT("two")));
 	View->SelectedCompletion = 0;
 	View->MoveCompletion(-1);
 	TestEqual(TEXT("Up wraps to the last suggestion"), View->SelectedCompletion, 1);

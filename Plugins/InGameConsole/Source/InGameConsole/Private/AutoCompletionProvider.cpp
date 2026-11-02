@@ -5,16 +5,20 @@
 
 
 bool UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(const FString& InToAutocomplete,
-	const TArray<FString>& Options, TSet<FString>& AutoCompletions)
+                                                           const TArray<FString>& Options,
+                                                           TSet<FAutocompletion>& AutoCompletions, bool bIgnoreCase)
 {
+	ESearchCase::Type SearchCase = bIgnoreCase ? ESearchCase::IgnoreCase : ESearchCase::CaseSensitive;
+
 	for (const FString& Option : Options)
 	{
-		if (Option.Equals(InToAutocomplete))
+		if (
+			Option.Equals(InToAutocomplete, SearchCase) ||
+			(Option.Len() > InToAutocomplete.Len() && Option.Mid(0, InToAutocomplete.Len()).Equals(
+				InToAutocomplete, SearchCase))
+		)
 		{
-			AutoCompletions.Add("");
-		} else if (Option.Len() > InToAutocomplete.Len() && Option.Mid(0, InToAutocomplete.Len()).Equals(InToAutocomplete))
-		{
-			AutoCompletions.Add(Option.Mid(InToAutocomplete.Len()));
+			AutoCompletions.Add(FAutocompletion(InToAutocomplete, Option));
 		}
 	}
 

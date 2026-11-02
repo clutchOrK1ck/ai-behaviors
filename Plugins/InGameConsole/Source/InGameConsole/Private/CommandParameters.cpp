@@ -114,19 +114,18 @@ bool UStringParameter::ParseAndValidate(const FString& Value, const UConsoleComm
 	return true;
 }
 
-bool UStringParameter::RequestAutocompletions_Implementation(const FString& String, TSet<FString>& AutoCompletions) const
+bool UStringParameter::RequestAutocompletions_Implementation(const FString& String, TSet<FAutocompletion>& AutoCompletions) const
 {
 	// auto-completing a string value only makes sense if values are restricted to a set
 	if (Validation.ValidationType == AllowedValueSet && !Validation.bProvideAllowedValuesDynamically)
 	{
 		return UAutoCompletionUtils::GetAutoCompletionsBySimpleMatch(String, Validation.AllowedValues.Array(), AutoCompletions);
 	}
-
-	// TODO how do we go about dynamic value sets?
+	
 	return false;
 }
 
-bool UListParameter::RequestAutocompletions_Implementation(const FString& String, TSet<FString>& AutoCompletions) const
+bool UListParameter::RequestAutocompletions_Implementation(const FString& String, TSet<FAutocompletion>& AutoCompletions) const
 {
 	if (Validation.ValidationType == AllowedValueSet && !Validation.bProvideAllowedValuesDynamically)
 	{
@@ -140,7 +139,8 @@ bool UListParameter::RequestAutocompletions_Implementation(const FString& String
 		}
 	}
 
-	// TODO dynamic value sets
+	// note: dynamic value sets are validated in the game console which knows enough about the auto-completed command
+	
 	return false;
 }
 

@@ -609,7 +609,7 @@ FAutocompletionRequest UGameConsole::ResolveAutocompletionRequest(const FString&
 	return FAutocompletionRequest::INVALID;
 }
 
-bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString, TSet<FString>& AutoCompletions) const
+bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString, TSet<FAutocompletion>& AutoCompletions) const
 {
 	if (InString.TrimStartAndEnd().IsEmpty())
 	{
@@ -697,7 +697,7 @@ bool UGameConsole::RequestAutocompletions_Implementation(const FString& InString
 }
 
 bool UGameConsole::SuggestAutoCompletions(const FString& InCmdText, const int32 CaretPosition,
-	TSet<FString>& AutoCompletions) const
+	TSet<FAutocompletion>& AutoCompletions) const
 {
 	if (InCmdText.TrimStartAndEnd().IsEmpty())
 	{

@@ -30,9 +30,9 @@ int32 SConsoleEditableText::Caret() const
 	return EditableTextLayout->GetCursorLocation().GetOffset();
 }
 
-float SConsoleEditableText::CaretX() const
+float SConsoleEditableText::TextPositionX(int32 Offset) const
 {
-	const FString Prefix = GetText().ToString().Left(Caret());
+	const FString Prefix = GetText().ToString().Left(Offset);
 	return FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(Prefix, TerminalFont()).X
 		- FVector2D(EditableTextLayout->GetScrollOffset()).X;
 }
@@ -134,11 +134,11 @@ void SGameConsole::Construct(const FArguments& InArgs)
 				.Padding(4)
 				.Visibility_Lambda([this] { return Completions.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 				[
-					SAssignNew(CompletionList, SListView<TSharedPtr<FString>>)
+					SAssignNew(CompletionList, SListView<TSharedPtr<FAutocompletion>>)
 					.ListItemsSource(&Completions)
 					.SelectionMode(ESelectionMode::Single)
 					.OnGenerateRow(this, &SGameConsole::MakeCompletionRow)
-					.OnMouseButtonClick_Lambda([this](TSharedPtr<FString> Item)
+					.OnMouseButtonClick_Lambda([this](TSharedPtr<FAutocompletion> Item)
 					{
 						SelectedCompletion = Completions.IndexOfByKey(Item);
 						AcceptCompletion();
@@ -288,16 +288,23 @@ void SGameConsole::RequestCompletions()
 
 	CompletionSource = Input->GetText().ToString();
 	CompletionCaret = Input->Caret();
-	TSet<FString> Suggestions;
+	TSet<FAutocompletion> Suggestions;
 	Owner->SuggestAutoCompletions(CompletionSource, CompletionCaret, Suggestions);
 	Completions.Empty();
-	TArray<FString> Sorted = Suggestions.Array();
-	Sorted.Sort();
-	for (const FString& Suffix : Sorted)
+	TArray<FAutocompletion> Sorted = Suggestions.Array();
+	Sorted.Sort([](const FAutocompletion& Left, const FAutocompletion& Right)
 	{
-		if (!Suffix.IsEmpty())
+		return Left.SuggestedCompletion < Right.SuggestedCompletion;
+	});
+
+	for (const FAutocompletion& Suggestion : Sorted)
+	{
+		// Only replace roots that actually end at the captured caret. Keep case-only corrections.
+		if (!Suggestion.SuggestedCompletion.IsEmpty()
+			&& !Suggestion.Root.Equals(Suggestion.SuggestedCompletion, ESearchCase::CaseSensitive)
+			&& CompletionSource.Left(CompletionCaret).EndsWith(Suggestion.Root, ESearchCase::CaseSensitive))
 		{
-			Completions.Add(MakeShared<FString>(Suffix));
+			Completions.Add(MakeShared<FAutocompletion>(Suggestion));
 		}
 	}
 
@@ -333,20 +340,22 @@ void SGameConsole::AcceptCompletion()
 		return;
 	}
 
-	const FString Suffix = *Completions[SelectedCompletion];
-	const FString Text = CompletionSource.Left(CompletionCaret) + Suffix + CompletionSource.Mid(CompletionCaret);
-	SetInput(Text, CompletionCaret + Suffix.Len());
+	const FAutocompletion Completion = *Completions[SelectedCompletion];
+	const int32 RootStart = CompletionCaret - Completion.Root.Len();
+	const FString Text = CompletionSource.Left(RootStart) + Completion.SuggestedCompletion
+		+ CompletionSource.Mid(CompletionCaret);
+	SetInput(Text, RootStart + Completion.SuggestedCompletion.Len());
 	DismissCompletions();
 	FocusInput();
 }
 
-TSharedRef<ITableRow> SGameConsole::MakeCompletionRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& Owner)
+TSharedRef<ITableRow> SGameConsole::MakeCompletionRow(TSharedPtr<FAutocompletion> Item, const TSharedRef<STableViewBase>& Owner)
 {
-	return SNew(STableRow<TSharedPtr<FString>>, Owner)
+	return SNew(STableRow<TSharedPtr<FAutocompletion>>, Owner)
 	.Padding(6)
 	[
 		SNew(STextBlock)
-		.Text(FText::FromString(CompletionSource.Left(CompletionCaret) + *Item))
+		.Text(FText::FromString(Item->SuggestedCompletion))
 		.Font(TerminalFont())
 		.ColorAndOpacity(FLinearColor::White)
 	];
@@ -447,7 +456,8 @@ void SGameConsole::Tick(const FGeometry& Geometry, double Time, float DeltaTime)
 	}
 
 	const FGeometry& InputGeometry = Input->GetCachedGeometry();
-	const FVector2D Anchor = Geometry.AbsoluteToLocal(InputGeometry.LocalToAbsolute(FVector2D(Input->CaretX(), 0)));
+	const int32 RootStart = CompletionCaret - Completions[SelectedCompletion]->Root.Len();
+	const FVector2D Anchor = Geometry.AbsoluteToLocal(InputGeometry.LocalToAbsolute(FVector2D(Input->TextPositionX(RootStart), 0)));
 	PopupSize = FVector2D(FMath::Min(500.f, FMath::Max(100.f, Geometry.GetLocalSize().X - 64.f)),
 		FMath::Min(220.f, 8.f + Completions.Num() * 30.f));
 	PopupPosition = FVector2D(FMath::Clamp(Anchor.X, 0.f, FMath::Max(0.f, Geometry.GetLocalSize().X - PopupSize.X)),
