@@ -4,6 +4,7 @@
 #include "RemoteExecutionComponent.h"
 
 #include "GameConsole.h"
+#include "GameFramework/GameModeBase.h"
 #include "Net/UnrealNetwork.h"
 
 void URemoteExecutionComponent::ReceiveCommandFeedbackOnClient_Implementation(const FString& Message,
@@ -141,9 +142,68 @@ void URemoteExecutionComponent::RequestServerExecutionAuthority_Implementation(E
 	NewRequest.Type = Type;
 	NewRequest.Key = Key;
 
+	// avoid producing duplicate rights
+	if (ExecutionAuthorityList.Contains(NewRequest.GetAuthority()))
+	{
+		StdOut->Write("You already have this execution authority, no request sent");
+		return;
+	}
+
+	// request validation (valid category or valid server non-latent command)
+	switch (NewRequest.Type)
+	{
+	case EExecutionAuthorityType::SingleCommand:
+		{
+			FCommandDefinition CommandDefinition;
+			bool bFound;
+
+			GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>()->FindCommandDefinition(
+				FName(Key), CommandDefinition, bFound);
+
+			if (!bFound)
+			{
+				StdErr->Write(FString::Format(TEXT("Request failed: command '{0}' does not exist"), {Key}));
+				return;
+			}
+
+			if (!CommandDefinition.bServer)
+			{
+				StdErr->Write(FString::Format(TEXT("Request failed: '{0}' is not a server command"), {Key}));
+				return;
+			}
+
+			if (CommandDefinition.bLatent)
+			{
+				StdErr->Write(FString::Format(
+					TEXT("Request failed: '{0}' is latent. Latent commands do not support remote execution"),
+					{Key}));
+				return;
+			}
+
+			break;
+		}
+	case EExecutionAuthorityType::AllInCategory:
+		{
+			TSet<FString> KnownCategories;
+
+			GetWorld()->GetGameInstance()->GetSubsystem<UGameConsole>()->GetCategories(KnownCategories);
+
+			if (!KnownCategories.Contains(Key))
+			{
+				StdErr->Write(FString::Format(TEXT("Request failed: '{0}' category does not exist"), {Key}));
+				return;
+			}
+			
+			break;
+		}
+	default:
+		break;
+	}
+
 	if (auto RemoteExecutionSubsystem = GetWorld()->GetSubsystem<URemoteExecutionSubsystem>())
 	{
 		RemoteExecutionSubsystem->AddRemoteExecutionAuthorityRequest(NewRequest);
+		StdOut->Write("Sent successfully");
 	} else
 	{
 		UE_LOG(LogTemp, Error, TEXT("Remote execution subsystem not found"));
@@ -162,8 +222,37 @@ bool URemoteExecutionSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 
 void URemoteExecutionSubsystem::AddRemoteExecutionAuthorityRequest(const FExecutionAuthorityRequest& Request)
 {
+	// do not create duplicate requests TODO
 	PendingRequests.Enqueue(Request);
 	NumPendingRequests++;
+}
+
+void URemoteExecutionSubsystem::Deinitialize()
+{
+	FGameModeEvents::OnGameModePostLoginEvent().Remove(OnPlayerLoginHandle);
+	Super::Deinitialize();
+}
+
+void URemoteExecutionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	OnPlayerLoginHandle = FGameModeEvents::OnGameModePostLoginEvent().AddUObject(this, &URemoteExecutionSubsystem::OnPlayerLogin);
+	Super::Initialize(Collection);
+}
+
+void URemoteExecutionSubsystem::OnPlayerLogin(AGameModeBase* GameMode, APlayerController* PlayerController)
+{
+	if (GetDefault<UGameConsoleSettings>()->EnableRemoteExecution)
+	{
+		// could be this player controller class has its own remote execution component by default
+		if (PlayerController->FindComponentByClass<URemoteExecutionComponent>() != nullptr)
+		{
+			return;
+		}
+		
+		auto RemoteExecutionComponent = NewObject<URemoteExecutionComponent>(PlayerController, URemoteExecutionComponent::StaticClass());
+		RemoteExecutionComponent->OnComponentCreated();
+		RemoteExecutionComponent->RegisterComponent();
+	}
 }
 
 void URemoteExecutionSubsystem::GrantAuthority(const APlayerController* Player, EExecutionAuthorityType Type, FString Key)
@@ -178,8 +267,7 @@ void URemoteExecutionSubsystem::GrantAuthority(const APlayerController* Player, 
 	NewAuthority.Type = Type;
 	NewAuthority.Key = Key;
 
-	// TODO double check that key is present if a particular type is supplied
-	Player->FindComponentByClass<URemoteExecutionComponent>()->ExecutionAuthorityList.Add(NewAuthority);
+	Player->FindComponentByClass<URemoteExecutionComponent>()->ExecutionAuthorityList.AddUnique(NewAuthority);
 }
 
 bool URemoteExecutionSubsystem::PeekNextRequest(FExecutionAuthorityRequest& Request)

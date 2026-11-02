@@ -87,7 +87,7 @@ void SGameConsole::Construct(const FArguments& InArgs)
 						.Padding(0, 0, 10, 0)
 						[
 							SNew(STextBlock)
-							.Text(FText::FromString(TEXT(">")))
+							.Text_Raw(this, &SGameConsole::GetTextInputPrefix)
 							.Font(TerminalFont())
 							.ColorAndOpacity(FLinearColor(0.5f, 0.85f, 0.65f))
 						]
@@ -350,6 +350,16 @@ TSharedRef<ITableRow> SGameConsole::MakeCompletionRow(TSharedPtr<FString> Item, 
 		.Font(TerminalFont())
 		.ColorAndOpacity(FLinearColor::White)
 	];
+}
+
+FText SGameConsole::GetTextInputPrefix() const
+{
+	if (Console.IsValid() && Console->RunningInForeground.IsValid())
+	{
+		return FText::FromString(Console->RunningInForeground->CommandName.ToString() + " >");
+	}
+
+	return FText::FromString(">");
 }
 
 FReply SGameConsole::OnPreviewKeyDown(const FGeometry&, const FKeyEvent& Event)

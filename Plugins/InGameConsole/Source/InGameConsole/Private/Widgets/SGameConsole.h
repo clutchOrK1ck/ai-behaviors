@@ -89,4 +89,9 @@ private:
 
 	TSharedRef<ITableRow> MakeCompletionRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& Owner);
 
+	/**
+	 * text to put on the left of the text input (for example, '>')
+	 * @return 
+	 */
+	FText GetTextInputPrefix() const;
 };

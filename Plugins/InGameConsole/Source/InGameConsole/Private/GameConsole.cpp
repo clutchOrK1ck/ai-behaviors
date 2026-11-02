@@ -448,6 +448,14 @@ void UGameConsole::FindCommandDefinition(FName CommandName, FCommandDefinition& 
 	}
 }
 
+void UGameConsole::GetCategories(TSet<FString>& OutCategories) const
+{
+	for (const auto& CommandDefinition : GetCommandDefinitions())
+	{
+		OutCategories.Add(CommandDefinition.Category); // TODO case sensitivity?
+	}
+}
+
 bool UGameConsole::LookUpExecutionHistoryAtOffset(const int32 Offset, FString& HistoricalCommand) const
 {
 	if (Offset == 0)

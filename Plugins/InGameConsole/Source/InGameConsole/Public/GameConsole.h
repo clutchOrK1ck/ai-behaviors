@@ -26,6 +26,12 @@ class UGameConsoleSettings : public UDeveloperSettings
 public:
 	UPROPERTY(EditAnywhere, Config)
 	FKey ToggleKey = EKeys::Tilde;
+
+	UPROPERTY(EditAnywhere, Config, meta=(
+		ToolTip =
+		"Enables remote execution for this game. This will result in a remote execution component being automatically created for every player controller when playing in multiplayer (clients still have to request rights to execute server-only commands"
+	))
+	bool EnableRemoteExecution;
 };
 
 //~ autocompletion
@@ -142,7 +148,7 @@ class INGAMECONSOLE_API UGameConsole : public UGameInstanceSubsystem, public IAu
 	TSharedPtr<IInputProcessor> SlateInputProcessor;
 	bool bPreviousMouseCursor = false;
 	TWeakObjectPtr<APlayerController> UIController;
-
+	
 	void AppendOutput(const FString& Text, EConsoleLineType Type);
 		
 	// an array of command templates that are used for parsing, parameter validation etc. (NOT for execution)
@@ -234,6 +240,12 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void FindCommandDefinition(FName CommandName, FCommandDefinition& Definition, bool& Found) const;
+
+	/**
+	 * @param OutCategories a set of known command categories
+	 */
+	UFUNCTION(BlueprintCallable)
+	void GetCategories(TSet<FString>& OutCategories) const;
 	
 	/**
 	 * look up the executed command in the execution history

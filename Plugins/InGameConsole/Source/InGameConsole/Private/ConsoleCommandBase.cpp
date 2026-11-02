@@ -57,8 +57,11 @@ void ULatentConsoleCommand::RequireUserInput(const UObject* WorldContextObject,
 	{
 		if (World->GetLatentActionManager().FindExistingAction<FLatentAwaitUserInputAction>(LatentInfo.CallbackTarget, LatentInfo.UUID) == nullptr)
 		{
-			// push the prompt to stdout
-			WriteMessageToStdOut(Prompt);
+			// push the prompt to stdout, but only if there's actual text
+			if (!Prompt.TrimStartAndEnd().IsEmpty())
+			{
+				WriteMessageToStdOut(Prompt);
+			}
 			
 			bIsWaitingForUserInput = true; // TODO double-check the logic here
 			FLatentAwaitUserInputAction* AwaitUserInputAction = new FLatentAwaitUserInputAction(OutUserInput, LatentInfo);

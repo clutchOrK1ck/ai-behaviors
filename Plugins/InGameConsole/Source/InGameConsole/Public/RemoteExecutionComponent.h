@@ -29,6 +29,11 @@ struct FExecutionAuthority
 
 	UPROPERTY(BlueprintReadOnly)
 	FString Key; // this can mean different things depending on the authority type
+
+	bool operator==(const FExecutionAuthority& Other) const
+	{
+		return Type == Other.Type && Key.Equals(Other.Key);
+	}
 };
 
 /**
@@ -47,6 +52,19 @@ struct FExecutionAuthorityRequest
 
 	UPROPERTY(BlueprintReadOnly)
 	FString Key;
+
+	// the authority this request is supposed to grant
+	FExecutionAuthority GetAuthority() const
+	{
+		return FExecutionAuthority(Type, Key);
+	}
+
+	bool operator==(const FExecutionAuthorityRequest& Other) const
+	{
+		return Requester == Other.Requester &&
+			Type == Other.Type &&
+			Key.Equals(Other.Key);
+	}
 };
 
 /**
@@ -127,6 +145,9 @@ class URemoteExecutionSubsystem : public UWorldSubsystem
 	int NumPendingRequests = 0;
 	TQueue<FExecutionAuthorityRequest> PendingRequests;
 
+	// we bind to player logins to attach the remote execution component, in case supported by the game
+	FDelegateHandle OnPlayerLoginHandle;
+
 public:
 
 	// this subsystem only exists on the server in networked games
@@ -135,6 +156,9 @@ public:
 
 	void AddRemoteExecutionAuthorityRequest(const FExecutionAuthorityRequest& Request);
 
+	virtual void Deinitialize() override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	
 	UFUNCTION(BlueprintCallable, meta=(
 		ToolTip = "Grant execution authority to the player. You can call this from game mode to grant default server execution authorities to players and avoid exchanging requests"))
 	void GrantAuthority(const APlayerController* Player, EExecutionAuthorityType Type, FString Key);
@@ -160,4 +184,6 @@ public:
 
 	UFUNCTION(BlueprintPure)
 	int GetNumPendingRequests();
+
+	void OnPlayerLogin(AGameModeBase* GameMode, APlayerController* PlayerController);
 };
